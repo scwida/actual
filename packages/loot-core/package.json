@@ -172,6 +172,7 @@
     "postpack": "ts-node scripts/restore-package-json.mts"
   },
   "dependencies": {
+    "@actual-app/crdt": "workspace:*",
     "@jlongster/sql.js": "^1.6.7",
     "@rschedule/core": "^1.5.0",
     "@rschedule/standard-date-adapter": "^1.5.0",
@@ -195,7 +196,6 @@
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "@actual-app/crdt": "workspace:*",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/jlongster__sql.js": "npm:@types/sql.js@latest",

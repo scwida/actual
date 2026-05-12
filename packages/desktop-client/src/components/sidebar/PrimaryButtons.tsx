@@ -51,6 +51,13 @@ export function PrimaryButtons() {
       <Item title={t('Budget')} Icon={SvgWallet} to="/budget" />
       <Item title={t('Reports')} Icon={SvgReports} to="/reports" />
       <Item title={t('Schedules')} Icon={SvgCalendar3} to="/schedules" />
+
+      <Item
+        title={t('Paycheck Planner')}
+        Icon={SvgCalendar3}
+        to="/paycheck-planner"
+      />
+
       <Item
         title={t('More')}
         Icon={isOpen ? SvgCheveronDown : SvgCheveronRight}

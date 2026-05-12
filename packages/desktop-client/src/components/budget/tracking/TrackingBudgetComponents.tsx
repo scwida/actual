@@ -1,7 +1,7 @@
 // @ts-strict-ignore
 import React, { memo, useRef, useState } from 'react';
 import type { ComponentProps, CSSProperties } from 'react';
-import { Trans } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 
 import { Button } from '@actual-app/components/button';
 import { SvgCheveronDown } from '@actual-app/components/icons/v1';
@@ -29,12 +29,78 @@ import { useFormat } from '#hooks/useFormat';
 import { useNavigate } from '#hooks/useNavigate';
 import { useSheetValue } from '#hooks/useSheetValue';
 import { useUndo } from '#hooks/useUndo';
+import { useGoalsContext } from '#paycheck-planner/GoalsContext';
 import type { Binding, SheetFields } from '#spreadsheet';
 import { trackingBudget } from '#spreadsheet/bindings';
 import type { CategoryGroupMonthProps, CategoryMonthProps } from '..';
 
 import { BalanceMenu } from './BalanceMenu';
 import { BudgetMenu } from './BudgetMenu';
+
+function TrackingGoalBar({ categoryId }: { categoryId: string }) {
+  const { t } = useTranslation();
+  const { goals } = useGoalsContext();
+  const goal = goals[categoryId];
+  const budgetedCents =
+    (useSheetValue<'tracking-budget', 'budget'>(
+      trackingBudget.catBudgeted(categoryId),
+    ) as number) ?? 0;
+
+  if (!goal) return null;
+
+  const budgetedDollars = budgetedCents / 100;
+  const pct = goal.amount > 0 ? Math.min(budgetedDollars / goal.amount, 1) : 0;
+  const remaining = goal.amount - budgetedDollars;
+
+  const barColor = pct >= 1 ? '#027a48' : pct > 0 ? '#b54708' : '#d0d5dd';
+
+  let statusText: string;
+  let statusColor: string;
+  if (pct >= 1) {
+    statusText = t('Funded');
+    statusColor = '#027a48';
+  } else if (budgetedDollars > 0) {
+    statusText = `$${remaining.toFixed(2)} ${t('more needed')}`;
+    statusColor = '#b54708';
+  } else {
+    statusText = `${t('Goal')}: $${goal.amount.toFixed(2)}`;
+    statusColor = '#98a2b3';
+  }
+
+  return (
+    <div style={{ marginTop: 2 }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: statusColor,
+          textAlign: 'right',
+          marginBottom: 2,
+          lineHeight: 1,
+        }}
+      >
+        {statusText}
+      </div>
+      <div
+        style={{
+          height: 4,
+          backgroundColor: '#e4e7ec',
+          borderRadius: 2,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            height: '100%',
+            width: `${pct * 100}%`,
+            backgroundColor: barColor,
+            borderRadius: 2,
+            transition: 'width 0.3s ease',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export const useTrackingSheetValue = <
   FieldName extends SheetFields<'tracking-budget'>,
@@ -500,6 +566,7 @@ export const CategoryMonth = memo(function CategoryMonth({
               }}
             />
           </Popover>
+          <TrackingGoalBar categoryId={category.id} />
         </Field>
       )}
     </View>

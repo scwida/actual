@@ -5,6 +5,7 @@ import type { CategoryEntity } from '@actual-app/core/types/models/category';
 import { NotesButton } from '#components/NotesButton';
 import { useFeatureFlag } from '#hooks/useFeatureFlag';
 import { useNotes } from '#hooks/useNotes';
+import { CategoryGoalChip } from '#paycheck-planner/CategoryGoalChip';
 
 import { CategoryAutomationButton } from './goals/CategoryAutomationButton';
 
@@ -24,6 +25,11 @@ export const SidebarCategoryButtons = ({
 
   return (
     <>
+      <CategoryGoalChip
+        categoryId={category.id}
+        categoryName={category.name}
+        compact
+      />
       <View style={{ flex: 1 }} />
       {!goalsShown && isGoalTemplatesUIEnabled && (
         <View style={{ flexShrink: 0 }}>
