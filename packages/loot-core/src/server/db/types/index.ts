@@ -51,6 +51,7 @@ export type DbCategoryGroup = {
   is_income: 1 | 0;
   sort_order: number;
   hidden: 1 | 0;
+  budget_exempt: 1 | 0;
   tombstone: 1 | 0;
 };
 
@@ -302,6 +303,7 @@ export type DbViewCategoryWithGroupHidden = {
   hidden: DbCategory['hidden'];
   group: DbCategoryGroup['id'];
   group_hidden: DbCategoryGroup['hidden'];
+  group_budget_exempt: DbCategoryGroup['budget_exempt'];
   sort_order: DbCategory['sort_order'];
   tombstone: DbCategory['tombstone'];
 };

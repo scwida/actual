@@ -1,7 +1,6 @@
 import React, { useContext } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 
-import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import * as monthUtils from '@actual-app/core/shared/months';
 
@@ -22,7 +21,6 @@ export function RenderMonths({ children, style }: RenderMonthsProps) {
       <View
         style={{
           flex: 1,
-          borderLeft: '1px solid ' + theme.tableBorder,
           ...style,
         }}
       >

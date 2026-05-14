@@ -13,7 +13,6 @@ import { styles } from '@actual-app/components/styles';
 import { Text } from '@actual-app/components/text';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
-import * as monthUtils from '@actual-app/core/shared/months';
 import { css } from '@emotion/css';
 
 import { BalanceWithCarryover } from '#components/budget/BalanceWithCarryover';
@@ -38,7 +37,7 @@ import { BalanceMovementMenu } from './BalanceMovementMenu';
 import { BudgetMenu } from './BudgetMenu';
 import { IncomeMenu } from './IncomeMenu';
 
-function EnvelopeGoalBar({ categoryId }: { categoryId: string }) {
+function useGoalBarData(categoryId: string) {
   const { t } = useTranslation();
   const { goals } = useGoalsContext();
   const goal = goals[categoryId];
@@ -46,13 +45,30 @@ function EnvelopeGoalBar({ categoryId }: { categoryId: string }) {
     (useSheetValue<'envelope-budget', 'budget'>(
       envelopeBudget.catBudgeted(categoryId),
     ) as number) ?? 0;
+  const balanceCents =
+    (useSheetValue<'envelope-budget', 'leftover'>(
+      envelopeBudget.catBalance(categoryId),
+    ) as number) ?? 0;
+  const spentCents =
+    (useSheetValue<'envelope-budget', 'sum-amount'>(
+      envelopeBudget.catSumAmount(categoryId),
+    ) as number) ?? 0;
 
-  if (!goal) return null;
+  if (!goal) {
+    const isFullySpent = balanceCents === 0 && spentCents < 0;
+    return {
+      hasGoal: false,
+      isFullySpent,
+      statusText: isFullySpent ? t('Fully Spent') : null,
+      statusColor: '#98a2b3',
+      pct: 0,
+      barColor: '#d0d5dd',
+    };
+  }
 
   const budgetedDollars = budgetedCents / 100;
   const pct = goal.amount > 0 ? Math.min(budgetedDollars / goal.amount, 1) : 0;
   const remaining = goal.amount - budgetedDollars;
-
   const barColor = pct >= 1 ? '#027a48' : pct > 0 ? '#b54708' : '#d0d5dd';
 
   let statusText: string;
@@ -68,38 +84,73 @@ function EnvelopeGoalBar({ categoryId }: { categoryId: string }) {
     statusColor = '#98a2b3';
   }
 
+  return {
+    hasGoal: true,
+    isFullySpent: false,
+    statusText,
+    statusColor,
+    pct,
+    barColor,
+  };
+}
+
+/** Status text label shown to the LEFT of the balance pill */
+export function EnvelopeGoalStatus({ categoryId }: { categoryId: string }) {
+  const { statusText, statusColor } = useGoalBarData(categoryId);
+  if (!statusText) return null;
   return (
-    <div style={{ marginTop: 2 }}>
+    <span
+      style={{
+        fontSize: 10,
+        color: statusColor,
+        whiteSpace: 'nowrap',
+        lineHeight: 1,
+        opacity: 0.85,
+      }}
+    >
+      {statusText}
+    </span>
+  );
+}
+
+/** Thin progress bar shown below the pill */
+export function EnvelopeGoalProgressBar({
+  categoryId,
+}: {
+  categoryId: string;
+}) {
+  const { hasGoal, pct, barColor } = useGoalBarData(categoryId);
+  if (!hasGoal || pct === 0) return null;
+  return (
+    <div
+      style={{
+        height: 3,
+        backgroundColor: '#e4e7ec',
+        borderRadius: 2,
+        overflow: 'hidden',
+        marginTop: 3,
+      }}
+    >
       <div
         style={{
-          fontSize: 10,
-          color: statusColor,
-          textAlign: 'right',
-          marginBottom: 2,
-          lineHeight: 1,
-        }}
-      >
-        {statusText}
-      </div>
-      <div
-        style={{
-          height: 4,
-          backgroundColor: '#e4e7ec',
+          height: '100%',
+          width: `${pct * 100}%`,
+          backgroundColor: barColor,
           borderRadius: 2,
-          overflow: 'hidden',
+          transition: 'width 0.3s ease',
         }}
-      >
-        <div
-          style={{
-            height: '100%',
-            width: `${pct * 100}%`,
-            backgroundColor: barColor,
-            borderRadius: 2,
-            transition: 'width 0.3s ease',
-          }}
-        />
-      </div>
+      />
     </div>
+  );
+}
+
+/** @deprecated Use EnvelopeGoalStatus + EnvelopeGoalProgressBar separately */
+export function EnvelopeGoalBar({ categoryId }: { categoryId: string }) {
+  return (
+    <>
+      <EnvelopeGoalStatus categoryId={categoryId} />
+      <EnvelopeGoalProgressBar categoryId={categoryId} />
+    </>
   );
 }
 
@@ -129,8 +180,12 @@ const EnvelopeSheetCell = <FieldName extends SheetFields<'envelope-budget'>>(
   return <SheetCell {...props} />;
 };
 
+const _COL_GOAL = 140;
+const _COL_NUM = 110;
+
 const headerLabelStyle: CSSProperties = {
   flex: 1,
+  flexBasis: 0,
   padding: '0 5px',
   textAlign: 'right',
 };
@@ -146,15 +201,19 @@ export const BudgetTotalsMonth = memo(function BudgetTotalsMonth() {
       style={{
         flex: 1,
         flexDirection: 'row',
-        marginRight: styles.monthRightPadding,
         paddingTop: 10,
         paddingBottom: 10,
-        backgroundColor: theme.budgetCurrentMonth,
       }}
     >
       <View style={headerLabelStyle}>
-        <Text style={{ color: theme.tableHeaderText }}>
-          <Trans>Budgeted</Trans>
+        <Text
+          style={{
+            color: theme.tableHeaderText,
+            fontSize: 11.5,
+            fontWeight: 600,
+          }}
+        >
+          <Trans>Assigned</Trans>
         </Text>
         <EnvelopeCellValue
           binding={envelopeBudget.totalBudgeted}
@@ -166,16 +225,30 @@ export const BudgetTotalsMonth = memo(function BudgetTotalsMonth() {
         </EnvelopeCellValue>
       </View>
       <View style={headerLabelStyle}>
-        <Text style={{ color: theme.tableHeaderText }}>
-          <Trans>Spent</Trans>
+        <Text
+          style={{
+            color: theme.tableHeaderText,
+            fontSize: 11.5,
+            fontWeight: 600,
+          }}
+        >
+          <Trans>Activity</Trans>
         </Text>
         <EnvelopeCellValue binding={envelopeBudget.totalSpent} type="financial">
           {props => <CellValueText {...props} style={cellStyle} />}
         </EnvelopeCellValue>
       </View>
-      <View style={headerLabelStyle}>
-        <Text style={{ color: theme.tableHeaderText }}>
-          <Trans>Balance</Trans>
+      <View
+        style={{ ...headerLabelStyle, paddingRight: styles.monthRightPadding }}
+      >
+        <Text
+          style={{
+            color: theme.tableHeaderText,
+            fontSize: 11.5,
+            fontWeight: 600,
+          }}
+        >
+          <Trans>Available</Trans>
         </Text>
         <EnvelopeCellValue
           binding={envelopeBudget.totalBalance}
@@ -195,7 +268,6 @@ export function IncomeHeaderMonth() {
         color: theme.tableHeaderText,
         alignItems: 'center',
         paddingRight: 10,
-        backgroundColor: theme.budgetCurrentMonth,
       }}
     >
       <View style={{ flex: 1, textAlign: 'right' }}>
@@ -206,7 +278,7 @@ export function IncomeHeaderMonth() {
 }
 
 export const ExpenseGroupMonth = memo(function ExpenseGroupMonth({
-  month,
+  month: _month,
   group,
 }: CategoryGroupMonthProps) {
   const { id } = group;
@@ -216,16 +288,18 @@ export const ExpenseGroupMonth = memo(function ExpenseGroupMonth({
       style={{
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: monthUtils.isCurrentMonth(month)
-          ? theme.budgetHeaderCurrentMonth
-          : theme.budgetHeaderOtherMonth,
       }}
     >
       <EnvelopeSheetCell
         name="budgeted"
         width="flex"
         textAlign="right"
-        style={{ fontWeight: 600, ...styles.tnum }}
+        style={{
+          fontWeight: 600,
+          ...styles.tnum,
+          borderTopWidth: 0,
+          borderBottomWidth: 0,
+        }}
         valueProps={{
           binding: envelopeBudget.groupBudgeted(id),
           type: 'financial',
@@ -235,7 +309,12 @@ export const ExpenseGroupMonth = memo(function ExpenseGroupMonth({
         name="spent"
         width="flex"
         textAlign="right"
-        style={{ fontWeight: 600, ...styles.tnum }}
+        style={{
+          fontWeight: 600,
+          ...styles.tnum,
+          borderTopWidth: 0,
+          borderBottomWidth: 0,
+        }}
         valueProps={{
           binding: envelopeBudget.groupSumAmount(id),
           type: 'financial',
@@ -249,6 +328,8 @@ export const ExpenseGroupMonth = memo(function ExpenseGroupMonth({
           fontWeight: 600,
           paddingRight: styles.monthRightPadding,
           ...styles.tnum,
+          borderTopWidth: 0,
+          borderBottomWidth: 0,
         }}
         valueProps={{
           binding: envelopeBudget.groupBalance(id),
@@ -296,6 +377,30 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
 
   const navigate = useNavigate();
 
+  const rawBalance =
+    (useEnvelopeSheetValue(envelopeBudget.catBalance(category.id)) as number) ??
+    0;
+  const { hasGoal, pct } = useGoalBarData(category.id);
+  const isPartiallyFunded = hasGoal && pct > 0 && pct < 1;
+
+  const balancePillBg =
+    rawBalance < 0
+      ? 'rgba(180,35,24,0.14)'
+      : rawBalance === 0
+        ? 'rgba(120,120,130,0.12)'
+        : isPartiallyFunded
+          ? 'rgba(255,204,0,0.22)'
+          : 'rgba(52,199,89,0.18)';
+
+  const balancePillColor =
+    rawBalance < 0
+      ? '#b42318'
+      : rawBalance === 0
+        ? '#5a5a65'
+        : isPartiallyFunded
+          ? '#7a5800'
+          : '#1a7a35';
+
   const { schedule, scheduleStatus, isScheduleRecurring, description } =
     useCategoryScheduleGoalTemplateIndicator({
       category,
@@ -309,9 +414,6 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
       style={{
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: monthUtils.isCurrentMonth(month)
-          ? theme.budgetCurrentMonth
-          : theme.budgetOtherMonth,
         '& .hover-visible': {
           opacity: 0,
           transition: 'opacity .25s',
@@ -349,9 +451,6 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
                 paddingLeft: 3,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderTopWidth: 1,
-                borderBottomWidth: 1,
-                borderColor: theme.tableBorder,
               }}
             >
               <NotesButton
@@ -367,9 +466,6 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
                 paddingLeft: 3,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderTopWidth: 1,
-                borderBottomWidth: 1,
-                borderColor: theme.tableBorder,
               }}
             >
               <Button
@@ -444,7 +540,12 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
           focused={editing}
           width="flex"
           onExpose={() => onEdit(category.id, month)}
-          style={{ ...(editing && { zIndex: 100 }), ...styles.tnum }}
+          style={{
+            ...(editing && { zIndex: 100 }),
+            ...styles.tnum,
+            borderTopWidth: 0,
+            borderBottomWidth: 0,
+          }}
           textAlign="right"
           valueStyle={{
             cursor: 'default',
@@ -479,7 +580,11 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
           }}
         />
       </View>
-      <Field name="spent" width="flex" style={{ textAlign: 'right' }}>
+      <Field
+        name="spent"
+        width="flex"
+        style={{ textAlign: 'right', borderTopWidth: 0, borderBottomWidth: 0 }}
+      >
         <View
           data-testid="category-month-spent"
           onClick={() => onShowActivity(category.id, month)}
@@ -539,39 +644,68 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
         ref={balanceMenuTriggerRef}
         name="balance"
         width="flex"
-        style={{ paddingRight: styles.monthRightPadding, textAlign: 'right' }}
+        truncate={false}
+        style={{
+          paddingRight: styles.monthRightPadding,
+          borderTopWidth: 0,
+          borderBottomWidth: 0,
+        }}
       >
-        <Button
-          variant="bare"
-          onPress={() => {
-            resetBalancePosition(-6, -4);
-            setBalanceMenuOpen(true);
-          }}
-          onContextMenu={e => {
-            handleBalanceContextMenu(e);
-            // We need to calculate differently from the hook due to being aligned to the right
-            const rect = e.currentTarget.getBoundingClientRect();
-            resetBalancePosition(
-              e.clientX - rect.right + 200 - 8,
-              e.clientY - rect.bottom - 8,
-            );
-          }}
+        <View
           style={{
-            justifyContent: 'flex-end',
-            background: 'transparent',
-            width: '100%',
-            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
           }}
         >
-          <BalanceWithCarryover
-            carryover={envelopeBudget.catCarryover(category.id)}
-            balance={envelopeBudget.catBalance(category.id)}
-            goal={envelopeBudget.catGoal(category.id)}
-            budgeted={envelopeBudget.catBudgeted(category.id)}
-            longGoal={envelopeBudget.catLongGoal(category.id)}
-            tooltipDisabled={balanceMenuOpen}
-          />
-        </Button>
+          {/* Status label + pill in a row */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <EnvelopeGoalStatus categoryId={category.id} />
+            <Button
+              variant="bare"
+              onPress={() => {
+                resetBalancePosition(-6, -4);
+                setBalanceMenuOpen(true);
+              }}
+              onContextMenu={e => {
+                handleBalanceContextMenu(e);
+                const rect = e.currentTarget.getBoundingClientRect();
+                resetBalancePosition(
+                  e.clientX - rect.right + 200 - 8,
+                  e.clientY - rect.bottom - 8,
+                );
+              }}
+              style={{
+                background: balancePillBg,
+                borderRadius: 100,
+                padding: '4px 12px',
+                color: balancePillColor,
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >
+              <BalanceWithCarryover
+                carryover={envelopeBudget.catCarryover(category.id)}
+                balance={envelopeBudget.catBalance(category.id)}
+                goal={envelopeBudget.catGoal(category.id)}
+                budgeted={envelopeBudget.catBudgeted(category.id)}
+                longGoal={envelopeBudget.catLongGoal(category.id)}
+                tooltipDisabled={balanceMenuOpen}
+              />
+            </Button>
+          </View>
+          {/* Goal progress bar below */}
+          <View style={{ width: '100%' }}>
+            <EnvelopeGoalProgressBar categoryId={category.id} />
+          </View>
+        </View>
 
         <Popover
           triggerRef={balanceMenuTriggerRef}
@@ -592,7 +726,6 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
             onClose={() => setBalanceMenuOpen(false)}
           />
         </Popover>
-        <EnvelopeGoalBar categoryId={category.id} />
       </Field>
     </View>
   );
@@ -601,7 +734,7 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
 type IncomeGroupMonthProps = {
   month: string;
 };
-export function IncomeGroupMonth({ month }: IncomeGroupMonthProps) {
+export function IncomeGroupMonth({ month: _month }: IncomeGroupMonthProps) {
   return (
     <View style={{ flex: 1 }}>
       <EnvelopeSheetCell
@@ -612,9 +745,6 @@ export function IncomeGroupMonth({ month }: IncomeGroupMonthProps) {
           fontWeight: 600,
           paddingRight: styles.monthRightPadding,
           ...styles.tnum,
-          backgroundColor: monthUtils.isCurrentMonth(month)
-            ? theme.budgetHeaderCurrentMonth
-            : theme.budgetHeaderOtherMonth,
         }}
         valueProps={{
           binding: envelopeBudget.groupIncomeReceived,
@@ -651,9 +781,6 @@ export function IncomeCategoryMonth({
         style={{
           textAlign: 'right',
           ...(isLast && { borderBottomWidth: 0 }),
-          backgroundColor: monthUtils.isCurrentMonth(month)
-            ? theme.budgetCurrentMonth
-            : theme.budgetOtherMonth,
         }}
       >
         <View

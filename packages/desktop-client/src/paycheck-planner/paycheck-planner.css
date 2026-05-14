@@ -1,11 +1,11 @@
 :root,
 [data-theme='light'] {
   --font-body: 'Inter', system-ui, sans-serif;
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.5rem;
+  --text-xs: 0.8rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.625rem;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -13,36 +13,42 @@
   --space-5: 1.25rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
-  --color-bg: #f5f7fa;
-  --color-surface: #fff;
-  --color-surface-2: #f9fafb;
-  --color-surface-offset: #f0f2f5;
-  --color-divider: #e4e7ec;
-  --color-border: #d0d5dd;
-  --color-text: #101828;
-  --color-text-muted: #475467;
-  --color-text-faint: #98a2b3;
+  /* Glass design system — matches budget-page-v9 */
+  --color-bg: transparent;
+  --color-surface: rgba(255, 255, 255, 0.25);
+  --color-surface-2: rgba(255, 255, 255, 0.15);
+  --color-surface-offset: rgba(255, 255, 255, 0.12);
+  --color-divider: rgba(255, 255, 255, 0.35);
+  --color-border: rgba(255, 255, 255, 0.5);
+  --color-text: #1c1c1e;
+  --color-text-muted: #6e6e73;
+  --color-text-faint: rgba(0, 0, 0, 0.3);
   --color-primary: #0d7e82;
   --color-primary-hover: #095f63;
-  --color-primary-light: #e6f4f5;
-  --sidebar-bg: #1d2939;
-  --sidebar-text: #d0d5dd;
-  --sidebar-muted: #667085;
-  --sidebar-accent: #4db8bc;
-  --color-success: #027a48;
-  --color-warning: #b54708;
+  --color-primary-light: rgba(13, 126, 130, 0.1);
+  /* Sidebar: light frosted glass (same as main glass) */
+  --sidebar-bg: rgba(255, 255, 255, 0.25);
+  --sidebar-text: #1c1c1e;
+  --sidebar-muted: #6e6e73;
+  --sidebar-accent: #0d7e82;
+  --color-success: #1a7a35;
+  --color-warning: #7a5800;
   --color-error: #b42318;
   --color-snowball: #6941c6;
-  --color-snowball-bg: #f4f3ff;
+  --color-snowball-bg: rgba(105, 65, 198, 0.1);
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-full: 9999px;
   --transition: 150ms cubic-bezier(0.16, 1, 0.3, 1);
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-md:
-    0 4px 8px -2px rgba(16, 24, 40, 0.1), 0 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.5);
+  --glass-blur: blur(32px);
+  --glass-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 [data-theme='dark'] {
@@ -170,10 +176,12 @@ select {
 
 .paycheck-nav-panel {
   background: var(--color-surface);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-lg);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--glass-shadow);
   position: sticky;
   top: 72px;
 }
@@ -239,12 +247,15 @@ select {
 }
 
 .income-strip {
-  background: var(--sidebar-bg);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: var(--glass-shadow);
+  color: var(--color-text);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
   margin-bottom: var(--space-5);
-  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -265,7 +276,7 @@ select {
 
 .income-strip-label {
   font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -282,7 +293,7 @@ select {
 .income-divider {
   width: 1px;
   height: 32px;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .income-strip-bottom {
@@ -308,38 +319,38 @@ select {
 .paycheck-nav-btn {
   padding: 2px 6px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.3);
+  color: var(--color-text-muted);
 }
 
 .paycheck-nav-btn:hover {
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .paycheck-chip {
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.25);
   font-size: var(--text-xs);
-  color: #e5e7eb;
+  color: var(--color-text-muted);
 }
 
 .paycheck-chip:hover {
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .paycheck-chip.active {
   border-color: var(--sidebar-accent);
   color: var(--sidebar-accent);
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(13, 126, 130, 0.1);
 }
 
 .paycheck-status-pill {
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .allocation-panel {
@@ -352,9 +363,11 @@ select {
 
 .allocation-group-card {
   background: var(--color-surface);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-shadow);
   overflow: hidden;
 }
 
@@ -417,9 +430,11 @@ select {
 
 .section-card {
   background: var(--color-surface);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-shadow);
   overflow: hidden;
 }
 
@@ -517,6 +532,7 @@ select {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-divider);
   font-size: var(--text-sm);
+  line-height: 1.5;
 }
 
 .alloc-table tr:hover td {
@@ -559,6 +575,8 @@ select {
 
 .amount-input:focus {
   border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 .progress-bar-wrap {
@@ -631,8 +649,10 @@ select {
 
 .modal {
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 20px 60px rgba(16, 24, 40, 0.18),
+    0 8px 24px rgba(16, 24, 40, 0.1);
   width: 100%;
   max-width: 420px;
   max-height: 90vh;
@@ -694,4 +714,218 @@ select {
   .paycheck-nav-panel {
     display: none;
   }
+}
+
+/* ── Drag and drop ────────────────────────────────────────────────── */
+
+.alloc-table tr[draggable='true'] {
+  cursor: grab;
+}
+
+.alloc-table tr[draggable='true']:active {
+  cursor: grabbing;
+}
+
+.alloc-table tr[draggable='true']:hover {
+  background: var(--color-surface-2);
+}
+
+.drag-handle-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drag-handle {
+  color: var(--color-text-faint);
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition);
+  user-select: none;
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.alloc-table tr[draggable='true']:hover .drag-handle {
+  opacity: 1;
+}
+
+.section-card.cat-drag-over {
+  border: 2px dashed var(--color-primary);
+  background: var(--color-primary-light);
+  box-shadow: 0 0 0 4px rgba(13, 126, 130, 0.08);
+}
+
+.section-card.sec-insert-before {
+  box-shadow:
+    0 -4px 0 0 var(--color-primary),
+    var(--shadow-sm);
+}
+
+.section-card.sec-insert-after {
+  box-shadow:
+    0 4px 0 0 var(--color-primary),
+    var(--shadow-sm);
+}
+
+.section-card-empty {
+  opacity: 0.6;
+}
+
+.section-empty-drop {
+  padding: 14px 20px;
+  text-align: center;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+
+.section-empty-drop.drop-active {
+  color: var(--color-primary);
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* ── Section title editing ────────────────────────────────────────── */
+
+.section-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-rename-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-faint);
+  font-size: 0.85rem;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition:
+    opacity var(--transition),
+    color var(--transition);
+  line-height: 1;
+}
+
+.section-card-header:hover .section-rename-btn {
+  opacity: 1;
+}
+
+.section-rename-btn:hover {
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.section-drag-handle {
+  color: var(--color-text-faint);
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition);
+  user-select: none;
+  cursor: grab;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-2);
+}
+
+.section-drag-handle:active {
+  cursor: grabbing;
+}
+
+.section-card-header:hover .section-drag-handle {
+  opacity: 1;
+}
+
+.section-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+.section-card.collapsed .section-card-header {
+  border-bottom: none;
+}
+
+.section-title-input {
+  font-size: inherit;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: none;
+  border-bottom: 2px solid var(--color-primary);
+  border-radius: 0;
+  outline: none;
+  padding: 1px 2px;
+  min-width: 120px;
+  max-width: 260px;
+}
+
+/* ── Carried In (income strip) ────────────────────────────────────── */
+
+.carried-in-value {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.held-value {
+  color: var(--color-text-faint);
+}
+
+/* ── Hold for Future card ─────────────────────────────────────────── */
+
+.hold-forward-card {
+  background: var(--color-surface);
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.hold-forward-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+
+.hold-forward-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.hold-forward-arrow {
+  font-size: 1.25rem;
+  color: var(--color-text-faint);
+  flex-shrink: 0;
+}
+
+.hold-forward-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.hold-forward-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  margin-top: 2px;
+}
+
+.hold-forward-input {
+  flex-shrink: 0;
+}
+
+.hold-forward-summary {
+  padding: var(--space-2) var(--space-5);
+  border-top: 1px solid var(--color-divider);
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  font-weight: 500;
 }

@@ -202,7 +202,7 @@ export function FinancesApp() {
         <View
           style={{
             flexDirection: 'row',
-            backgroundColor: theme.pageBackground,
+            background: theme.pageBackground,
             flex: 1,
           }}
         >
@@ -211,7 +211,7 @@ export function FinancesApp() {
           <View
             style={{
               color: theme.pageText,
-              backgroundColor: theme.pageBackground,
+              background: 'transparent',
               flex: 1,
               overflow: 'hidden',
               width: '100%',

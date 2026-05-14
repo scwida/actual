@@ -7,7 +7,6 @@ import { Button } from '@actual-app/components/button';
 import { SvgCheveronDown } from '@actual-app/components/icons/v1';
 import { Menu } from '@actual-app/components/menu';
 import { Popover } from '@actual-app/components/popover';
-import { TextOneLine } from '@actual-app/components/text-one-line';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import type {
@@ -17,7 +16,6 @@ import type {
 
 import { InputCell } from '#components/table';
 import { useContextMenu } from '#hooks/useContextMenu';
-import { useGlobalPref } from '#hooks/useGlobalPref';
 
 import { SidebarCategoryButtons } from './SidebarCategoryButtons';
 
@@ -31,6 +29,7 @@ type SidebarCategoryProps = {
   style?: CSSProperties;
   borderColor?: string;
   isLast?: boolean;
+  isIncome?: boolean;
   onEditName: (id: CategoryEntity['id']) => void;
   onSave: (category: CategoryEntity) => void;
   onHideNewCategory?: () => void;
@@ -53,6 +52,7 @@ export function SidebarCategory({
   dragging,
   editing,
   goalsShown = false,
+  isIncome = false,
   style,
   isLast,
   onEditName,
@@ -61,8 +61,6 @@ export function SidebarCategory({
   onHideNewCategory,
 }: SidebarCategoryProps) {
   const { t } = useTranslation();
-  const [categoryExpandedStatePref] = useGlobalPref('categoryExpandedState');
-  const categoryExpandedState = categoryExpandedStatePref ?? 0;
 
   const temporary = category.id === 'new';
   const { setMenuOpen, menuOpen, handleContextMenu, resetPosition, position } =
@@ -78,12 +76,19 @@ export function SidebarCategory({
         WebkitUserSelect: 'none',
         opacity: category.hidden || categoryGroup?.hidden ? 0.33 : undefined,
         backgroundColor: 'transparent',
-        height: 20,
+        minHeight: 20,
+        paddingTop: 2,
+        paddingBottom: 2,
       }}
       ref={triggerRef}
       onContextMenu={handleContextMenu}
     >
-      <TextOneLine data-testid="category-name">{category.name}</TextOneLine>
+      <span
+        data-testid="category-name"
+        style={{ minWidth: 0, wordBreak: 'break-word' }}
+      >
+        {category.name}
+      </span>
       <View style={{ flexShrink: 0, marginLeft: 5 }}>
         <Button
           variant="bare"
@@ -136,6 +141,7 @@ export function SidebarCategory({
         category={category}
         dragging={dragging}
         goalsShown={goalsShown}
+        isIncome={isIncome}
       />
     </View>
   );
@@ -144,7 +150,8 @@ export function SidebarCategory({
     <View
       innerRef={innerRef}
       style={{
-        width: 200 + 100 * categoryExpandedState,
+        flex: 1,
+        minWidth: 0,
         overflow: 'hidden',
         '& .hover-visible': {
           display: 'none',
@@ -192,7 +199,7 @@ export function SidebarCategory({
           }
         }}
         onBlur={() => onEditName(null)}
-        style={{ paddingLeft: 13, ...(isLast && { borderBottomWidth: 0 }) }}
+        style={{ paddingLeft: 18, ...(isLast && { borderBottomWidth: 0 }) }}
         inputProps={{
           placeholder: temporary ? t('New category name') : '',
         }}

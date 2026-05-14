@@ -20,6 +20,9 @@ export const cardBorder = colorPalette.purple300;
 export const cardShadow = colorPalette.gray900;
 
 export const tableBackground = colorPalette.gray800;
+export const tableInputBackground = colorPalette.gray700;
+export const tableInputBorder = '#2e3040';
+export const tableRowBackgroundAlt = '#171722';
 export const tableRowBackgroundHover = colorPalette.gray500;
 export const tableText = colorPalette.gray150;
 export const tableTextLight = tableText;
@@ -57,9 +60,11 @@ export const sidebarItemBackgroundPositive = colorPalette.green400;
 export const sidebarItemBackgroundFailed = colorPalette.red300;
 export const sidebarItemAccentSelected = colorPalette.purple200;
 export const sidebarItemBackgroundHover = colorPalette.gray700;
+export const sidebarItemBackgroundSelected = colorPalette.gray700;
 export const sidebarItemText = colorPalette.gray100;
 export const sidebarItemTextSelected = colorPalette.purple200;
 export const sidebarBudgetName = colorPalette.gray300;
+export const sidebarDivider = colorPalette.gray700;
 
 export const menuBackground = colorPalette.gray700;
 export const menuItemBackground = colorPalette.gray200;

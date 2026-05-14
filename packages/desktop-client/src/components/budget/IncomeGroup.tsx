@@ -1,7 +1,6 @@
 // @ts-strict-ignore
 import React from 'react';
 
-import { theme } from '@actual-app/components/theme';
 import type { CategoryGroupEntity } from '@actual-app/core/types/models';
 
 import { Row } from '#components/table';
@@ -36,7 +35,10 @@ export function IncomeGroup({
       collapsed
       style={{
         fontWeight: 600,
-        backgroundColor: theme.budgetHeaderCurrentMonth, //use budget color
+        background: 'rgba(255,255,255,0.30)',
+        borderRadius: 11,
+        marginTop: 14,
+        marginBottom: 5,
       }}
     >
       <SidebarGroup

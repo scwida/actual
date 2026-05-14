@@ -84,6 +84,23 @@ export const hover = '#fafafa';
 export const border = '#e8ecf0';
 export const selected = '#b3d9ff';
 
+// Teal — primary brand color (matches design system --color-primary)
+export const teal50 = '#e6f4f5';
+export const teal100 = '#b3dfe0';
+export const teal200 = '#7fcbcc';
+export const teal300 = '#4db8bc';
+export const teal400 = '#26a7ad';
+export const teal500 = '#0d7e82';
+export const teal600 = '#095f63';
+export const teal700 = '#074850';
+export const teal800 = '#043438';
+export const teal900 = '#021e22';
+
+// Slate — dark surfaces (sidebar, dark panels)
+export const slate700 = '#253347';
+export const slate800 = '#1d2939';
+export const slate900 = '#0d1726';
+
 // Chart colors - Qualitative scale (9 colors)
 export const chartQual1 = '#45B29D'; // Dark Teal
 export const chartQual2 = '#EFC94C'; // Yellow

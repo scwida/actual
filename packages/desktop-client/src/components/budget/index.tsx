@@ -29,6 +29,7 @@ import { useSpreadsheet } from '#hooks/useSpreadsheet';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 
 import { AutoSizingBudgetTable } from './DynamicBudgetTable';
+import { MonthSummaryPanel } from './envelope/budgetsummary/MonthSummaryPanel';
 import * as envelopeBudget from './envelope/EnvelopeBudgetComponents';
 import { EnvelopeBudgetProvider } from './envelope/EnvelopeBudgetContext';
 import * as trackingBudget from './tracking/TrackingBudgetComponents';
@@ -234,21 +235,28 @@ export function Budget() {
 
   return (
     <SheetNameProvider name={monthUtils.sheetForMonth(startMonth)}>
-      {/*
-        In a previous iteration, the wrapper needs `overflow: hidden` for
-        some reason. Without it at certain dimensions the width/height
-        that autosizer gives us is slightly wrong, causing scrollbars to
-        appear. We might not need it anymore?
-      */}
       <View
         style={{
           ...styles.page,
-          paddingLeft: 8,
-          paddingRight: 8,
+          padding: '0 16px 16px',
           overflow: 'hidden',
+          flexDirection: 'row',
+          gap: 14,
         }}
       >
-        <View style={{ flex: 1 }}>{table}</View>
+        {/* Main budget area — flex column, two glass cards inside (top card + table) */}
+        <View
+          style={{
+            flex: 1,
+            overflow: 'hidden',
+            minWidth: 0,
+          }}
+        >
+          {table}
+        </View>
+
+        {/* Right summary panel — envelope budget only */}
+        {budgetType === 'envelope' && <MonthSummaryPanel month={startMonth} />}
       </View>
     </SheetNameProvider>
   );

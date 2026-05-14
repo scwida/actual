@@ -901,6 +901,7 @@ type TransactionProps = {
   ascDesc?: 'asc' | 'desc';
   onDragChange?: OnDragChangeCallback<TransactionEntity>;
   onDrop?: OnDropCallback;
+  isEven?: boolean;
 };
 
 const Transaction = memo(function Transaction({
@@ -959,6 +960,7 @@ const Transaction = memo(function Transaction({
   ascDesc,
   onDragChange,
   onDrop,
+  isEven = false,
 }: TransactionProps) {
   const { t } = useTranslation();
 
@@ -1328,7 +1330,9 @@ const Transaction = memo(function Transaction({
             ? theme.tableRowBackgroundHighlight
             : backgroundFocus
               ? theme.tableRowBackgroundHover
-              : theme.tableBackground,
+              : isEven
+                ? theme.tableRowBackgroundAlt
+                : theme.tableBackground,
           ':hover': !(backgroundFocus || selected) && {
             backgroundColor: theme.tableRowBackgroundHover,
           },
@@ -1806,6 +1810,7 @@ const Transaction = memo(function Transaction({
             value: debit === '' && credit === '' ? amountToCurrency(0) : debit,
             onUpdate: onUpdate.bind(null, 'debit'),
             'data-1p-ignore': true,
+            onFocus: e => (e.target as HTMLInputElement).select(),
           }}
           privacyFilter={{
             activationFilters: [!isTemporaryId(transaction.id)],
@@ -1837,6 +1842,7 @@ const Transaction = memo(function Transaction({
             value: credit,
             onUpdate: onUpdate.bind(null, 'credit'),
             'data-1p-ignore': true,
+            onFocus: e => (e.target as HTMLInputElement).select(),
           }}
           privacyFilter={{
             activationFilters: [!isTemporaryId(transaction.id)],
@@ -2432,6 +2438,7 @@ function TransactionTableInner({
         allTransactions={props.transactions}
         editing={editing}
         transaction={trans}
+        isEven={index % 2 === 0}
         transferAccountsByTransaction={props.transferAccountsByTransaction}
         subtransactions={childTransactions}
         showAccount={showAccount}

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Trans } from 'react-i18next';
 
 import { theme } from '@actual-app/components/theme';
@@ -88,10 +88,21 @@ export function PaycheckPlannerPage() {
   const {
     paychecks,
     allocations,
+    categoryAssignments,
+    categoryOrder,
+    sectionTitles,
+    sectionOrder,
+    collapsedSections,
     updateAllocation,
+    updateHoldForFuture,
+    updateCategoryOrder,
     addPaycheck,
     updatePaycheck,
     deletePaycheck,
+    updateCategorySection,
+    updateSectionTitle,
+    updateSectionOrder,
+    toggleSectionCollapsed,
   } = usePlannerStorage();
 
   const [activePaycheckId, setActivePaycheckId] = useState<string>(
@@ -116,41 +127,85 @@ export function PaycheckPlannerPage() {
     const categories: PlannerCategory[] = categoryGroups.flatMap(group =>
       (group.categories ?? [])
         .filter(c => !c.hidden)
-        .map(c => ({
-          id: c.id,
-          name: c.name,
-          groupId: group.id,
-          groupName: group.name,
-          sectionKey: findPlannerSectionKey(
-            c.name,
-            Boolean(group.is_income || c.is_income),
-          ),
-          isIncome: Boolean(group.is_income || c.is_income),
-        })),
+        .map(c => {
+          const isIncome = Boolean(group.is_income || c.is_income);
+          const sectionKey = isIncome
+            ? 'income'
+            : (categoryAssignments[c.id] ??
+              findPlannerSectionKey(c.name, false));
+          return {
+            id: c.id,
+            name: c.name,
+            groupId: group.id,
+            groupName: group.name,
+            sectionKey: sectionKey as PlannerSectionKey,
+            isIncome,
+          };
+        }),
     );
 
     const incomeCategories = categories.filter(c => c.isIncome);
 
-    const customSections = PLANNER_SECTIONS.filter(s => s.key !== 'income').map(
-      s => ({
+    const defaultSections = PLANNER_SECTIONS.filter(s => s.key !== 'income');
+    const allKeys = [...defaultSections.map(s => s.key as string), 'other'];
+    const orderedKeys =
+      sectionOrder.length > 0
+        ? [
+            ...sectionOrder.filter(k => allKeys.includes(k)),
+            ...allKeys.filter(k => !sectionOrder.includes(k)),
+          ]
+        : allKeys;
+    const customSections = orderedKeys.map(key => {
+      const sectionCats = categories.filter(
+        c => !c.isIncome && c.sectionKey === key,
+      );
+      const storedOrder = categoryOrder[key] ?? [];
+      const catById = Object.fromEntries(sectionCats.map(c => [c.id, c]));
+      const sorted = [
+        ...storedOrder.filter(id => catById[id]).map(id => catById[id]),
+        ...sectionCats.filter(c => !storedOrder.includes(c.id)),
+      ];
+
+      if (key === 'other') {
+        return {
+          key: 'other' as const,
+          title: sectionTitles['other'] ?? getPlannerSectionTitle('other'),
+          categories: sorted,
+        };
+      }
+      const s = defaultSections.find(sec => sec.key === key)!;
+      return {
         key: s.key,
-        title: s.title,
-        categories: categories.filter(
-          c => !c.isIncome && c.sectionKey === s.key,
-        ),
-      }),
-    );
+        title: sectionTitles[s.key] ?? s.title,
+        categories: sorted,
+      };
+    });
 
-    const otherSection = {
-      key: 'other' as const,
-      title: getPlannerSectionTitle('other'),
-      categories: categories.filter(
-        c => !c.isIncome && c.sectionKey === 'other',
-      ),
-    };
+    return { incomeCategories, customSections };
+  }, [data, categoryAssignments, categoryOrder, sectionTitles, sectionOrder]);
 
-    return { incomeCategories, customSections, otherSection };
-  }, [data]);
+  // Paychecks sorted by date — used to find the immediately previous paycheck
+  const sortedPaychecks = useMemo(
+    () => [...paychecks].sort((a, b) => a.date.localeCompare(b.date)),
+    [paychecks],
+  );
+
+  // carriedIn: holdForFuture from the paycheck immediately before the active one
+  const carriedIn = useMemo(() => {
+    if (!activePaycheck) return 0;
+    const idx = sortedPaychecks.findIndex(p => p.id === activePaycheck.id);
+    if (idx <= 0) return 0;
+    return sortedPaychecks[idx - 1].holdForFuture ?? 0;
+  }, [sortedPaychecks, activePaycheck]);
+
+  // carriedIn map for every paycheck — used by the nav panel status dots
+  const carriedInMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (let i = 1; i < sortedPaychecks.length; i++) {
+      map[sortedPaychecks[i].id] = sortedPaychecks[i - 1].holdForFuture ?? 0;
+    }
+    return map;
+  }, [sortedPaychecks]);
 
   const budgeted = useMemo(() => {
     if (!activePaycheck) return 0;
@@ -175,7 +230,17 @@ export function PaycheckPlannerPage() {
   }, [paychecks, allocations, activePaycheck, activeMonth]);
 
   const totalIncome = activePaycheck ? getPaycheckTotal(activePaycheck) : 0;
-  const remaining = totalIncome - budgeted;
+  const totalAvailable = totalIncome + carriedIn;
+  const holdForFuture = activePaycheck?.holdForFuture ?? 0;
+  const remaining = totalAvailable - budgeted - holdForFuture;
+
+  // Label for the next calendar month, e.g. "June"
+  const nextMonthLabel = useMemo(() => {
+    const next = monthUtils.nextMonth(activeMonth);
+    return new Date(next + '-02').toLocaleDateString('en-US', {
+      month: 'long',
+    });
+  }, [activeMonth]);
 
   const handleAllocationChange = useCallback(
     (categoryId: string, value: string) => {
@@ -185,6 +250,18 @@ export function PaycheckPlannerPage() {
       setHasUnsavedChanges(true);
     },
     [activePaycheck, updateAllocation],
+  );
+
+  const handleHoldForFutureChange = useCallback(
+    (value: string) => {
+      if (!activePaycheck) return;
+      const dollars = Number.isFinite(Number(value))
+        ? Math.max(0, Number(value))
+        : 0;
+      updateHoldForFuture(activePaycheck.id, dollars);
+      setHasUnsavedChanges(true);
+    },
+    [activePaycheck, updateHoldForFuture],
   );
 
   const applyToBudget = useCallback(async () => {
@@ -274,13 +351,64 @@ export function PaycheckPlannerPage() {
     }
   }, [paycheckIndex, paychecks]);
 
+  const handleCategoryDrop = useCallback(
+    (targetSectionKey: string, categoryId: string) => {
+      if (!categoryId || targetSectionKey === 'income') return;
+      updateCategorySection(categoryId, targetSectionKey);
+      // Append to end of target section's order (removes from source implicitly
+      // because the category no longer belongs to that section)
+      const currentOrder = categoryOrder[targetSectionKey] ?? [];
+      if (!currentOrder.includes(categoryId)) {
+        updateCategoryOrder(targetSectionKey, [...currentOrder, categoryId]);
+      }
+    },
+    [updateCategorySection, updateCategoryOrder, categoryOrder],
+  );
+
+  const handleCategoryReorder = useCallback(
+    (sectionKey: string, orderedIds: string[]) => {
+      updateCategoryOrder(sectionKey, orderedIds);
+    },
+    [updateCategoryOrder],
+  );
+
+  const handleTitleSave = useCallback(
+    (sectionKey: string, newTitle: string) => {
+      updateSectionTitle(sectionKey, newTitle);
+    },
+    [updateSectionTitle],
+  );
+
+  const handleSectionReorder = useCallback(
+    (
+      targetSectionKey: string,
+      sourceSectionKey: string,
+      position: 'before' | 'after',
+    ) => {
+      const currentKeys = plannerData.customSections.map(s => s.key as string);
+      const filtered = currentKeys.filter(k => k !== sourceSectionKey);
+      const targetIndex = filtered.indexOf(targetSectionKey);
+      if (targetIndex === -1) return;
+      const insertIndex = position === 'after' ? targetIndex + 1 : targetIndex;
+      filtered.splice(insertIndex, 0, sourceSectionKey);
+      updateSectionOrder(filtered);
+    },
+    [plannerData.customSections, updateSectionOrder],
+  );
+
+  const handleToggleCollapse = useCallback(
+    (sectionKey: string) => {
+      toggleSectionCollapsed(sectionKey);
+    },
+    [toggleSectionCollapsed],
+  );
+
   if (paychecks.length === 0) {
     return (
       <View
         style={{
           padding: 24,
           color: theme.pageText,
-          backgroundColor: theme.pageBackground,
           height: '100%',
           display: 'flex',
           alignItems: 'center',
@@ -309,11 +437,11 @@ export function PaycheckPlannerPage() {
   return (
     <View
       style={{
-        padding: 24,
+        padding: '0 16px 16px',
         color: theme.pageText,
-        backgroundColor: theme.pageBackground,
         height: '100%',
         boxSizing: 'border-box',
+        overflowY: 'auto',
       }}
     >
       {/* Page header */}
@@ -413,12 +541,30 @@ export function PaycheckPlannerPage() {
 
           <div className="income-divider" />
 
+          {carriedIn > 0 && (
+            <>
+              <div className="income-strip-item">
+                <div className="income-strip-label">
+                  <Trans>Carried In</Trans>
+                </div>
+                <div className="income-strip-value carried-in-value">
+                  +{currencyFormatter.format(carriedIn)}
+                </div>
+              </div>
+              <div className="income-divider" />
+            </>
+          )}
+
           <div className="income-strip-item">
             <div className="income-strip-label">
-              <Trans>Total Income</Trans>
+              {carriedIn > 0 ? (
+                <Trans>Total Available</Trans>
+              ) : (
+                <Trans>Total Income</Trans>
+              )}
             </div>
             <div className="income-strip-value highlight">
-              {currencyFormatter.format(totalIncome)}
+              {currencyFormatter.format(totalAvailable)}
             </div>
           </div>
 
@@ -432,6 +578,18 @@ export function PaycheckPlannerPage() {
               {currencyFormatter.format(budgeted)}
             </div>
           </div>
+
+          {holdForFuture > 0 && (
+            <div className="income-strip-item">
+              <div className="income-strip-label">
+                <Trans>Hold for </Trans>
+                {nextMonthLabel}
+              </div>
+              <div className="income-strip-value held-value">
+                {currencyFormatter.format(holdForFuture)}
+              </div>
+            </div>
+          )}
 
           <div className="income-strip-item">
             <div className="income-strip-label">
@@ -523,10 +681,12 @@ export function PaycheckPlannerPage() {
           <div className="month-list">
             {paychecks.map(p => {
               const total = getPaycheckTotal(p);
-              const spent = Object.values(allocations[p.id] ?? {}).reduce(
+              const carried = carriedInMap[p.id] ?? 0;
+              const allocated = Object.values(allocations[p.id] ?? {}).reduce(
                 (sum, v) => sum + (Number(v) || 0),
                 0,
               );
+              const held = p.holdForFuture ?? 0;
               return (
                 <button
                   key={p.id}
@@ -538,11 +698,11 @@ export function PaycheckPlannerPage() {
                   <div>
                     <div className="paycheck-date">{formatDate(p.date)}</div>
                     <div className="paycheck-amount">
-                      {currencyFormatter.format(total)}
+                      {currencyFormatter.format(total + carried)}
                     </div>
                   </div>
                   <span
-                    className={`paycheck-status ${getStatusClass(total, spent)}`}
+                    className={`paycheck-status ${getStatusClass(total + carried, allocated + held)}`}
                   />
                 </button>
               );
@@ -557,7 +717,9 @@ export function PaycheckPlannerPage() {
               <PlannerCategorySection
                 key={section.key}
                 title={section.title}
+                sectionKey={section.key}
                 budgetType={resolvedBudgetType}
+                collapsed={collapsedSections.includes(section.key as string)}
                 rows={section.categories.map(c => ({
                   id: c.id,
                   name: c.name,
@@ -567,23 +729,50 @@ export function PaycheckPlannerPage() {
                   isSnowball: isSnowballCategory(c.name),
                 }))}
                 onChangeAmount={handleAllocationChange}
+                onCategoryDrop={handleCategoryDrop}
+                onCategoryReorder={handleCategoryReorder}
+                onSectionReorder={handleSectionReorder}
+                onToggleCollapse={handleToggleCollapse}
+                onTitleSave={handleTitleSave}
               />
             ))}
 
-            {plannerData.otherSection.categories.length > 0 && (
-              <PlannerCategorySection
-                title={plannerData.otherSection.title}
-                budgetType={resolvedBudgetType}
-                rows={plannerData.otherSection.categories.map(c => ({
-                  id: c.id,
-                  name: c.name,
-                  groupName: c.groupName,
-                  planned: allocations[activePaycheck.id]?.[c.id] ?? 0,
-                  alreadyBudgeted: priorAllocations[c.id] ?? 0,
-                }))}
-                onChangeAmount={handleAllocationChange}
-              />
-            )}
+            {/* Hold for Future row — reserves dollars from this paycheck for next month */}
+            <div className="hold-forward-card">
+              <div className="hold-forward-row">
+                <div className="hold-forward-left">
+                  <span className="hold-forward-arrow">→</span>
+                  <div>
+                    <div className="hold-forward-label">
+                      <Trans>Hold for {{ nextMonthLabel }}</Trans>
+                    </div>
+                    <div className="hold-forward-hint">
+                      <Trans>
+                        Reserve dollars for next month — carried into your next
+                        paycheck
+                      </Trans>
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  className="amount-input hold-forward-input"
+                  min="0"
+                  step="1"
+                  value={holdForFuture || ''}
+                  placeholder="0"
+                  onChange={e => handleHoldForFutureChange(e.target.value)}
+                />
+              </div>
+              {holdForFuture > 0 && (
+                <div className="hold-forward-summary">
+                  <Trans>
+                    {currencyFormatter.format(holdForFuture)} will be available
+                    in your next paycheck
+                  </Trans>
+                </div>
+              )}
+            </div>
           </div>
         </SheetNameProvider>
       </div>

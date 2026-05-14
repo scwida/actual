@@ -22,7 +22,6 @@ import { NotesButton } from '#components/NotesButton';
 import { InputCell } from '#components/table';
 import { useContextMenu } from '#hooks/useContextMenu';
 import { useFeatureFlag } from '#hooks/useFeatureFlag';
-import { useGlobalPref } from '#hooks/useGlobalPref';
 
 type SidebarGroupProps = {
   group: CategoryGroupEntity;
@@ -59,8 +58,6 @@ export function SidebarGroup({
 }: SidebarGroupProps) {
   const { t } = useTranslation();
   const isGoalTemplatesEnabled = useFeatureFlag('goalTemplatesEnabled');
-  const [categoryExpandedStatePref] = useGlobalPref('categoryExpandedState');
-  const categoryExpandedState = categoryExpandedStatePref ?? 0;
 
   const temporary = group.id === 'new';
   const { setMenuOpen, menuOpen, handleContextMenu, resetPosition, position } =
@@ -97,10 +94,8 @@ export function SidebarGroup({
       )}
       <div
         style={{
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
           minWidth: 0,
+          wordBreak: 'break-word',
         }}
       >
         {dragPreview && <Text style={{ fontWeight: 500 }}>Group: </Text>}
@@ -138,6 +133,11 @@ export function SidebarGroup({
                     onDelete(group.id);
                   } else if (type === 'toggle-visibility') {
                     onSave({ ...group, hidden: !group.hidden });
+                  } else if (type === 'toggle-budget-exempt') {
+                    onSave({
+                      ...group,
+                      budget_exempt: !group.budget_exempt,
+                    });
                   } else if (type === 'apply-multiple-category-template') {
                     onApplyBudgetTemplatesInGroup?.(
                       group.categories.filter(c => !c.hidden).map(c => c.id),
@@ -150,6 +150,12 @@ export function SidebarGroup({
                   !group.is_income && {
                     name: 'toggle-visibility',
                     text: group.hidden ? t('Show') : t('Hide'),
+                  },
+                  !group.is_income && {
+                    name: 'toggle-budget-exempt',
+                    text: group.budget_exempt
+                      ? t('Include in budget')
+                      : t('Exclude from budget'),
                   },
                   onDelete && { name: 'delete', text: t('Delete') },
                   ...(isGoalTemplatesEnabled
@@ -202,8 +208,8 @@ export function SidebarGroup({
       innerRef={innerRef}
       style={{
         ...style,
-        width: 200 + 100 * categoryExpandedState,
-        backgroundColor: theme.budgetHeaderCurrentMonth,
+        flex: 1,
+        minWidth: 0,
         overflow: 'hidden',
         '& .hover-visible': {
           display: 'none',

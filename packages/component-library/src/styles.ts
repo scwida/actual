@@ -15,7 +15,7 @@ const shadowLarge = {
 export const styles: CSSProperties = {
   incomeHeaderHeight: 70,
   cardShadow: '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
-  monthRightPadding: 5,
+  monthRightPadding: 12,
   menuBorderRadius: 4,
   mobileMinHeight: MOBILE_MIN_HEIGHT,
   mobileMenuItem: {
@@ -29,33 +29,33 @@ export const styles: CSSProperties = {
   mobileEditingPadding: 12,
   altMenuMaxHeight: 250,
   altMenuText: {
-    fontSize: 13,
+    fontSize: 14,
   },
   altMenuHeaderText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
   },
   veryLargeText: {
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: 600,
   },
   largeText: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 700,
     letterSpacing: 0.5,
   },
   mediumText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 500,
   },
   smallText: {
-    fontSize: 13,
+    fontSize: 14,
   },
   verySmallText: {
-    fontSize: 12,
+    fontSize: 13,
   },
   tinyText: {
-    fontSize: 10,
+    fontSize: 11,
   },
   page: {
     flex: 1,
@@ -167,5 +167,14 @@ export const styles: CSSProperties = {
     borderTopLeftRadius: 6,
     borderTopRightRadius: 6,
     overflow: 'hidden',
+  },
+  glassCard: {
+    background: 'rgba(255,255,255,0.25)',
+    backdropFilter: 'blur(32px)',
+    WebkitBackdropFilter: 'blur(32px)',
+    border: '1px solid rgba(255,255,255,0.50)',
+    boxShadow:
+      '0 8px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.65)',
+    borderRadius: 18,
   },
 };

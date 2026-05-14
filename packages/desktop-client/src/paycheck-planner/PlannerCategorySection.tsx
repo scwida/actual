@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
 import { useSheetValue } from '#hooks/useSheetValue';
@@ -24,10 +24,22 @@ export type PlannerCategoryRow = {
 type RowItemProps = {
   row: PlannerCategoryRow;
   budgetType: 'envelope' | 'tracking';
+  insertBefore?: boolean;
+  insertAfter?: boolean;
   onChangeAmount: (id: string, value: string) => void;
+  onRowDragOver: (rowId: string, before: boolean) => void;
+  onRowDragLeave: () => void;
 };
 
-function PlannerRowItem({ row, budgetType, onChangeAmount }: RowItemProps) {
+function PlannerRowItem({
+  row,
+  budgetType,
+  insertBefore,
+  insertAfter,
+  onChangeAmount,
+  onRowDragOver,
+  onRowDragLeave,
+}: RowItemProps) {
   const { t } = useTranslation();
   const { goals, setGoal, removeGoal } = useGoalsContext();
   const goal = goals[row.id];
@@ -44,13 +56,13 @@ function PlannerRowItem({ row, budgetType, onChangeAmount }: RowItemProps) {
   const budgetedCents =
     budgetType === 'tracking' ? trackingCents : envelopeCents;
 
-  // Goal amount takes priority over Actual's current budgeted amount.
   const monthlyTarget = goal ? goal.amount : (budgetedCents as number) / 100;
 
   const assigned = row.planned;
   const totalAllocated = row.alreadyBudgeted + assigned;
   const diff = totalAllocated - monthlyTarget;
-  const pct = monthlyTarget > 0 ? Math.min(totalAllocated / monthlyTarget, 1) : 0;
+  const pct =
+    monthlyTarget > 0 ? Math.min(totalAllocated / monthlyTarget, 1) : 0;
   const progressColor =
     pct >= 1
       ? 'var(--color-success)'
@@ -60,11 +72,43 @@ function PlannerRowItem({ row, budgetType, onChangeAmount }: RowItemProps) {
 
   return (
     <>
-      <tr className={row.isSnowball ? 'snowball-row' : ''}>
+      <tr
+        className={row.isSnowball ? 'snowball-row' : ''}
+        draggable
+        onDragStart={e => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', `cat:${row.id}`);
+        }}
+        onDragOver={e => {
+          if (e.dataTransfer.types.includes('text/x-section')) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          onRowDragOver(row.id, e.clientY < rect.top + rect.height / 2);
+        }}
+        onDragLeave={e => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            onRowDragLeave();
+          }
+        }}
+        style={{
+          boxShadow: insertBefore
+            ? 'inset 0 2px 0 0 var(--color-primary)'
+            : insertAfter
+              ? 'inset 0 -2px 0 0 var(--color-primary)'
+              : undefined,
+        }}
+      >
+        {/* The div inside td is the flex container — NOT the td itself — to preserve table layout */}
         <td>
-          <div>
-            <span className="category-name">{row.name}</span>
-            <span className="category-detail">{row.groupName ?? ''}</span>
+          <div className="drag-handle-cell">
+            <span className="drag-handle" aria-hidden="true">
+              ⠿
+            </span>
+            <div>
+              <span className="category-name">{row.name}</span>
+              <span className="category-detail">{row.groupName ?? ''}</span>
+            </div>
           </div>
         </td>
 
@@ -178,65 +222,267 @@ function PlannerRowItem({ row, budgetType, onChangeAmount }: RowItemProps) {
 
 type Props = {
   title: string;
+  sectionKey: string;
   rows: PlannerCategoryRow[];
   budgetType: 'envelope' | 'tracking';
+  collapsed: boolean;
   onChangeAmount: (categoryId: string, value: string) => void;
+  onCategoryDrop: (sectionKey: string, categoryId: string) => void;
+  onCategoryReorder: (sectionKey: string, orderedIds: string[]) => void;
+  onSectionReorder: (
+    targetSectionKey: string,
+    sourceSectionKey: string,
+    position: 'before' | 'after',
+  ) => void;
+  onToggleCollapse: (sectionKey: string) => void;
+  onTitleSave: (sectionKey: string, newTitle: string) => void;
 };
 
 export function PlannerCategorySection({
   title,
+  sectionKey,
   rows,
   budgetType,
+  collapsed,
   onChangeAmount,
+  onCategoryDrop,
+  onCategoryReorder,
+  onSectionReorder,
+  onToggleCollapse,
+  onTitleSave,
 }: Props) {
-  const sectionTotal = rows.reduce((sum, row) => sum + (row.planned || 0), 0);
+  const { t } = useTranslation();
+  const [catDragActive, setCatDragActive] = useState(false);
+  const [secInsertPos, setSecInsertPos] = useState<'before' | 'after' | null>(
+    null,
+  );
+  const [dragOverRowId, setDragOverRowId] = useState<string | null>(null);
+  const [dragInsertBefore, setDragInsertBefore] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(title);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
-  if (rows.length === 0) {
-    return null;
-  }
+  const sectionTotal = rows.reduce((sum, row) => sum + (row.planned || 0), 0);
+  const isEmpty = rows.length === 0;
+
+  const startEditing = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setEditingTitle(title);
+    setIsEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.select(), 0);
+  };
+
+  const commitTitle = () => {
+    const trimmed = editingTitle.trim();
+    if (trimmed && trimmed !== title) {
+      onTitleSave(sectionKey, trimmed);
+    }
+    setIsEditingTitle(false);
+  };
+
+  const cancelTitle = () => {
+    setEditingTitle(title);
+    setIsEditingTitle(false);
+  };
 
   return (
-    <div className="section-card">
-      <div className="section-card-header">
-        <div className="section-card-title">{title}</div>
+    <div
+      className={`section-card${catDragActive ? ' cat-drag-over' : ''}${secInsertPos === 'before' ? ' sec-insert-before' : ''}${secInsertPos === 'after' ? ' sec-insert-after' : ''}${collapsed ? ' collapsed' : ''}${isEmpty ? ' section-card-empty' : ''}`}
+      onDragOver={e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (e.dataTransfer.types.includes('text/x-section')) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setSecInsertPos(
+            e.clientY < rect.top + rect.height / 2 ? 'before' : 'after',
+          );
+          setCatDragActive(false);
+        } else {
+          // Row-level drag-over is handled by individual rows; only show
+          // section highlight when hovering the section but not a specific row.
+          if (!dragOverRowId) setCatDragActive(true);
+          setSecInsertPos(null);
+        }
+      }}
+      onDragLeave={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setCatDragActive(false);
+          setSecInsertPos(null);
+          setDragOverRowId(null);
+        }
+      }}
+      onDrop={e => {
+        e.preventDefault();
+        setCatDragActive(false);
+        setSecInsertPos(null);
+        const raw = e.dataTransfer.getData('text/plain');
+        const currentDragOverRowId = dragOverRowId;
+        const currentDragInsertBefore = dragInsertBefore;
+        setDragOverRowId(null);
+
+        if (raw.startsWith('cat:')) {
+          const draggedId = raw.slice(4);
+          const isInThisSection = rows.some(r => r.id === draggedId);
+
+          if (
+            isInThisSection &&
+            currentDragOverRowId &&
+            currentDragOverRowId !== draggedId
+          ) {
+            // Reorder within the same section
+            const ids = rows.map(r => r.id);
+            const withoutDragged = ids.filter(id => id !== draggedId);
+            const targetIdx = withoutDragged.indexOf(currentDragOverRowId);
+            const insertIdx = currentDragInsertBefore
+              ? targetIdx
+              : targetIdx + 1;
+            withoutDragged.splice(insertIdx, 0, draggedId);
+            onCategoryReorder(sectionKey, withoutDragged);
+          } else if (!isInThisSection) {
+            onCategoryDrop(sectionKey, draggedId);
+          }
+        } else if (raw.startsWith('sec:')) {
+          const sourceSectionKey = raw.slice(4);
+          if (sourceSectionKey !== sectionKey) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pos =
+              e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+            onSectionReorder(sectionKey, sourceSectionKey, pos);
+          }
+        }
+      }}
+    >
+      {/* Header — click to collapse, drag handle to reorder */}
+      <div
+        className="section-card-header"
+        onClick={() => !isEditingTitle && onToggleCollapse(sectionKey)}
+      >
+        {/* Section drag handle */}
+        <span
+          className="section-drag-handle"
+          draggable
+          onDragStart={e => {
+            e.stopPropagation();
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', `sec:${sectionKey}`);
+            e.dataTransfer.setData('text/x-section', sectionKey);
+          }}
+          onClick={e => e.stopPropagation()}
+          aria-label={t('Drag to reorder section')}
+          title={t('Drag to reorder')}
+        >
+          ⠿
+        </span>
+
+        <div className="section-card-title-wrap">
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              className="section-title-input"
+              value={editingTitle}
+              onChange={e => setEditingTitle(e.target.value)}
+              onBlur={commitTitle}
+              onClick={e => e.stopPropagation()}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitTitle();
+                if (e.key === 'Escape') cancelTitle();
+              }}
+              aria-label={t('Rename section')}
+            />
+          ) : (
+            <span className="section-card-title">{title}</span>
+          )}
+          {!isEditingTitle && (
+            <button
+              type="button"
+              className="section-rename-btn"
+              onClick={startEditing}
+              aria-label={t('Rename {{title}}', { title })}
+              title={t('Rename section')}
+            >
+              ✎
+            </button>
+          )}
+        </div>
+
         <div className="section-summary">
-          <span className="section-total">
-            {currencyFormatter.format(sectionTotal)}
+          {!isEmpty && (
+            <span className="section-total">
+              {currencyFormatter.format(sectionTotal)}
+            </span>
+          )}
+          <span className="section-count">
+            {rows.length}{' '}
+            {rows.length === 1 ? (
+              <Trans>category</Trans>
+            ) : (
+              <Trans>categories</Trans>
+            )}
           </span>
+          {/* Chevron rotates when collapsed */}
+          <svg
+            className="section-chevron"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+              clipRule="evenodd"
+            />
+          </svg>
         </div>
       </div>
 
-      <table className="alloc-table">
-        <thead>
-          <tr>
-            <th>
-              <Trans>Category</Trans>
-            </th>
-            <th className="num">
-              <Trans>Monthly Target</Trans>
-            </th>
-            <th className="num">
-              <Trans>Already Budgeted</Trans>
-            </th>
-            <th className="num">
-              <Trans>This Paycheck</Trans>
-            </th>
-            <th className="num">
-              <Trans>vs Target</Trans>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(row => (
-            <PlannerRowItem
-              key={row.id}
-              row={row}
-              budgetType={budgetType}
-              onChangeAmount={onChangeAmount}
-            />
-          ))}
-        </tbody>
-      </table>
+      {/* Body — hidden when collapsed */}
+      {!collapsed &&
+        (isEmpty ? (
+          <div
+            className={`section-empty-drop${catDragActive ? ' drop-active' : ''}`}
+          >
+            <Trans>Drop categories here</Trans>
+          </div>
+        ) : (
+          <table className="alloc-table">
+            <thead>
+              <tr>
+                <th>
+                  <Trans>Category</Trans>
+                </th>
+                <th className="num">
+                  <Trans>Monthly Target</Trans>
+                </th>
+                <th className="num">
+                  <Trans>Already Budgeted</Trans>
+                </th>
+                <th className="num">
+                  <Trans>This Paycheck</Trans>
+                </th>
+                <th className="num">
+                  <Trans>vs Target</Trans>
+                </th>
+              </tr>
+            </thead>
+            <tbody onDragOver={e => e.preventDefault()}>
+              {rows.map(row => (
+                <PlannerRowItem
+                  key={row.id}
+                  row={row}
+                  budgetType={budgetType}
+                  insertBefore={dragOverRowId === row.id && dragInsertBefore}
+                  insertAfter={dragOverRowId === row.id && !dragInsertBefore}
+                  onChangeAmount={onChangeAmount}
+                  onRowDragOver={(rowId, before) => {
+                    setDragOverRowId(rowId);
+                    setDragInsertBefore(before);
+                    setCatDragActive(false);
+                  }}
+                  onRowDragLeave={() => setDragOverRowId(null)}
+                />
+              ))}
+            </tbody>
+          </table>
+        ))}
     </div>
   );
 }

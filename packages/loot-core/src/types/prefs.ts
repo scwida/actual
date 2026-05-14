@@ -103,6 +103,7 @@ export type GlobalPrefs = Partial<{
   floatingSidebar: boolean;
   maxMonths: number;
   categoryExpandedState: number;
+  budgetGoalChipVisibility: 'all' | 'expenses' | 'hidden';
   keyId?: string;
   language: string;
   theme: Theme;

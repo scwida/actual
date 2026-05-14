@@ -15,7 +15,10 @@ export function useMetaThemeColor(color?: string) {
   const [darkThemePreference] = usePreferredDarkTheme();
 
   useEffect(() => {
-    if (!color) return;
+    if (!color) {
+      document.body.style.backgroundColor = '';
+      return;
+    }
 
     const resolved =
       getPropertyValueFromVarString(color) || DEFAULT_THEME_COLOR;
