@@ -8,9 +8,55 @@
 
 This is a **personal family budgeting app** built on a forked version of [Actual Budget](https://actualbudget.org). The app extends Actual Budget with a new **Paycheck Planner** feature and a redesigned UI. The goal is a clean, modern, family-friendly budgeting tool that two spouses can use together to allocate every dollar before it's spent.
 
-The app name has not been decided yet. Use `BudgetApp` as a placeholder throughout the codebase and UI until a name is chosen. When a name is decided, do a full find-and-replace across the project.
+The app is named **myEnvelopes**. Domain: myenvelopes.app (planned purchase). All UI, docs, and code should use this name — no more `BudgetApp` placeholder.
 
 **Target users:** A family/couple (currently modeled on Scott and Katie) who receive multiple paychecks per month and want to plan each one in advance — zero-based budgeting style.
+
+---
+
+## ⭐ CURRENT DIRECTION — The Envelope System (read this before anything else)
+
+**This section is the authoritative product philosophy as of 2026-07-29.** It supersedes any prior assumptions baked into Section 8 (Paycheck Planner) and Section 9 (Data Models) below, both of which are kept only as historical reference for what was built before this direction was set — not as a spec to build toward. Where anything elsewhere in this file conflicts with this section, this section wins. There is also a UI mockup in Claude Design (the frosted-glass myEnvelopes concept) whose **visuals** still apply (see Section 5) but whose **functional behavior reflects the old model** — don't treat its interactions as spec.
+
+### The core idea
+
+The app should behave like real physical envelopes, not like a spreadsheet. An envelope is a place you put actual dollars so they have a job. You can always see if an envelope has enough money to do the thing you want to do with it. The system should never let you believe you have money you don't actually have.
+
+### Three tentpoles
+
+1. **The Ledger** — bank/cash accounts. The one and only source of truth for real money, and the hard ceiling on the whole system. Supports manual transaction entry and bank import/reconciliation (match imported transactions against manually entered ones, clear/reconcile like traditional accounting).
+2. **The Envelopes** — the current real state. Every envelope holds a real, stored dollar balance (not a computed "budgeted minus spent" formula). The sum of all envelope balances must never exceed the total across ledger accounts. This is the core invariant of the whole app.
+3. **The Planner** — the forecast. Plan future income (e.g. next Friday's paycheck) and draft how you intend to allocate it across envelopes, entirely separate from real envelope balances until that income is actually verified and committed.
+
+### How money moves (four movement types)
+
+1. **Ledger → Envelope (funding).** Real inflow gets assigned to one or more envelopes. Includes committing a planned paycheck, and manually allocating any other deposit (refund, gift, cash sale, interest).
+2. **Envelope → Ledger (spending).** Buying something debits an envelope regardless of payment method — debit, credit card, or cash, the envelope doesn't care how you paid, only whether the money was there. Credit card purchases debit the envelope immediately (Actual/YNAB convention); the card's outstanding balance is tracked as a separate liability funded by a reserved payment pool.
+3. **Envelope → Envelope (transfer).** Frictionless, no confirmation walls — like moving cash between two physical envelopes. Updates goal progress on both envelopes immediately. This is a first-class feature, not a workaround: the system should make it trivially easy to reallocate as life happens, and over time this is how a family learns their real spending patterns (a report showing transfer frequency per envelope is a good later feature).
+4. **Unallocated holding.** A generic "Unallocated" envelope catches deposits with no chosen destination yet (e.g. a manual deposit you haven't decided about). The app should gently nudge/remind the user to go allocate it — steering, not gating.
+
+### Envelope rules
+
+- **Account-agnostic.** An envelope is a pooled claim against total ledger balance, not pinned to one bank account. It doesn't care which account is actually funding it.
+- **Negative balances are allowed but discouraged.** If an allocation or purchase would take an envelope negative, the app should recommend a specific cover transfer (from another envelope or unallocated cash) but let the user dismiss it and proceed anyway. Never hard-block — the goal is a gentle nudge, not strong-arming the budgeter out of the philosophy.
+- **Goals with dates.** An envelope can have a target balance and target date; the app computes a suggested per-paycheck/weekly/monthly contribution to hit it (generalizes the old "Smart Suggestions" concept beyond just paychecks).
+- **Envelopes are personal.** The app assists and suggests, it never prescribes. Two families' envelope setups can look completely different — the system should never assume there's one "correct" way to categorize or prioritize.
+
+### The Planner, precisely
+
+- A **planned paycheck** (or any planned income) is a forecast: expected date, expected amount, and draft allocations to envelopes. Creating or editing a plan touches **zero** real envelope balances.
+- **Committing** a plan is the real event: verify the actual deposit against the ledger, then the draft allocations become real envelope deposits and balances actually move.
+- **Live drift indicators.** While a plan is still in draft state, the planner shows each planned allocation next to the envelope's *current real balance*, live — not just at commit time. If other activity (an overspend/borrow, another paycheck committing) has changed that envelope since the allocation was drafted, the row reflects it immediately. The goal is to keep plans realistic, not aspirational — the user should never be "living in a dream world" relative to their real envelopes.
+- Plans further in the future can have stale assumptions once an earlier plan commits differently than expected. Surface this lazily (a badge on the affected future plan), not as a running alert.
+
+### Sync & audit trail
+
+- **Real-time updates**, Google-Sheets style: refresh on sign-in and on field-blur (leave the cell), so two people acting concurrently (e.g. Scott and Katie) see each other's changes without manual refresh.
+- **Historical lock-in.** A committed transaction and its allocations are the permanent record. Edits after the fact are allowed but must show up in a recent-activity/audit log (YNAB's "recent moves" model), not silently overwrite history.
+
+### What this means for the engine
+
+The current budget engine (`packages/loot-core/src/server/budget/`) computes category "budgeted / spent / leftover" live from formula cells — a classic YNAB-style decoupled model. That is structurally incompatible with "an envelope holds a real, stored balance" and needs a genuine rewrite, not a patch. The ledger, sync, accounts-as-source-of-truth, and much of the UI shell (including the existing transfer/action-handler pattern and the Paycheck Planner UI scaffold at `packages/desktop-client/src/paycheck-planner/`) are compatible or close, and should be preserved and re-plumbed once the new engine exists rather than rebuilt from scratch. This rewrite is accepted as necessary and will be scoped as its own project phase — do not attempt to bolt "real balances" onto the existing spreadsheet engine, as that would create two disagreeing sources of truth.
 
 ---
 
@@ -60,6 +106,11 @@ This project is a fork of Actual Budget. Before making any changes, understand t
 ```bash
 # Start the app (browser dev server on port 3001)
 yarn start
+
+# Alternative: start directly from packages/desktop-client (skips root orchestration)
+# MUST use --mode=browser — without it, Vite uses electron-renderer conditions and
+# browser-preload.js never runs, causing window.Actual to be undefined at boot.
+# cd packages/desktop-client && npx cross-env PORT=3001 vite --mode=browser
 
 # Start with sync server (port 5006) — needed for multi-device sync features
 yarn start:server-dev
@@ -156,7 +207,7 @@ Before finishing any task, confirm all of these:
 
 ## 5. Design System
 
-**Source of truth:** `budget-page-v9.html` — the frosted glass mockup the user provided on 2026-05-13. All UI decisions derive from that file. Override any previous instructions that conflict with it.
+**Source of truth:** `budget-page-v9.html` — the frosted glass mockup the user provided on 2026-05-13. All **visual** decisions (color, typography, spacing, glass treatment) derive from that file, and this also applies to the Claude Design mockup of the same UI. Note: the mockup's **functional behavior** (how the paycheck planner and budget table actually work) reflects the old pre-envelope model — see the "⭐ CURRENT DIRECTION" section above for the real functional spec. Reuse the look, not the interaction logic.
 
 This design is an iOS 26-style frosted glass / glass morphism aesthetic. Apply it to ALL pages and components across the app. Check `packages/component-library/src/styles.ts` for the `glassCard` helper before writing custom glass styles.
 
@@ -285,7 +336,9 @@ body (flex, horizontal, page background gradient)
 
 ---
 
-## 8. Flagship Feature: Paycheck Planner
+## 8. Flagship Feature: Paycheck Planner — ⚠️ HISTORICAL, SUPERSEDED
+
+**This section describes the old model and is kept for reference only.** The real, current spec for the Planner lives in the "⭐ CURRENT DIRECTION" section near the top of this file (plan vs. commit, live drift indicators, envelopes hold real balances). Do not build against this section — it predates the envelope-real-balance philosophy and conflicts with it (e.g. it implies allocations write directly into budget categories with no plan/commit separation, and "Left to Budget" implies a decoupled YNAB-style total rather than a real ledger ceiling).
 
 This is the most important new feature. It does not exist in stock Actual Budget.
 
@@ -353,7 +406,9 @@ Debt categories use purple styling (`--color-snowball` text, `--color-snowball-b
 
 ---
 
-## 9. Data Models
+## 9. Data Models — ⚠️ HISTORICAL, SUPERSEDED
+
+**These types describe the old model and are kept for reference only.** They predate the envelope-real-balance philosophy: `Category.budget` is a monthly target with no stored balance field, and `Paycheck.allocations` writes straight to categories with no plan/draft/commit separation. The real data model needs to be designed as part of the engine rewrite described in the "⭐ CURRENT DIRECTION" section — at minimum it will need a real stored balance per envelope, a draft-vs-committed distinction for planned income, and an audit/history record independent of current balance. Don't implement against the types below.
 
 ### Category
 
@@ -405,7 +460,7 @@ type Paycheck = {
 
 Build these only when I ask:
 
-1. **Named app / branding** — replace BudgetApp placeholder once name is chosen
+1. ~~**Named app / branding**~~ — Done. App is named **myEnvelopes** (domain: myenvelopes.app).
 2. **Overview dashboard** — spending summary, monthly progress, net worth snapshot
 3. **Spending reports** — trend charts by category over time
 4. **Shared family view** — cloud sync so both Scott and Katie see the same budget
