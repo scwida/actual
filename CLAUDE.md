@@ -491,3 +491,23 @@ Read these when relevant — they contain rules that apply to this codebase:
 | `CODE_REVIEW_GUIDELINES.md`             | Code quality rules — TypeScript, linting, i18n, testing, financial typography |
 | `CONTRIBUTING.md`                       | Points to community contribution docs                                         |
 | `.github/agents/pr-and-commit-rules.md` | Commit message and PR rules (`[AI]` prefix required)                          |
+
+---
+
+## 14. Subagent Roles
+
+Four role-scoped subagents live in `.claude/agents/` for use within Claude Code
+sessions. Invoke by name rather than doing cross-domain work in a single
+generic session — each has explicit scope boundaries to prevent, e.g., a UI
+task quietly touching the budget engine's data model.
+
+| Agent | Domain | Use for |
+|---|---|---|
+| `engine-architect` | `packages/loot-core/` — data model, budget/envelope calculation engine, migrations | Designing or implementing the real-balance envelope engine rewrite, category/account schema, plan-vs-commit data model |
+| `feature-builder` | `packages/desktop-client/`, `packages/component-library/` | Building/wiring UI features, the Paycheck Planner UI, applying the frosted-glass design system |
+| `ux-designer` | Flow/interaction design only — no code, no styling | Deciding how a feature should behave before it's built; reviewing whether a flow matches the envelope philosophy; flagging where the Claude Design mockup's interactions conflict with the current direction |
+| `qa-reviewer` | Verification — typecheck, lint, tests, CLAUDE.md checklist | Run after any non-trivial change from engine-architect or feature-builder, before considering it done |
+
+Typical flow for a new feature: `ux-designer` defines the flow → `engine-architect`
+builds any needed data-model support → `feature-builder` wires the UI →
+`qa-reviewer` verifies before commit.
