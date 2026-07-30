@@ -97,7 +97,14 @@ export function createCategoryGroup(group, sheetName) {
 
 export function createSummary(groups, categories, prevSheetName, sheetName) {
   const incomeGroup = groups.filter(group => group.is_income)[0];
-  const expenseCategories = categories.filter(cat => !cat.is_income);
+  const exemptGroupIds = new Set(
+    groups
+      .filter(group => !group.is_income && group.budget_exempt)
+      .map(group => group.id),
+  );
+  const expenseCategories = categories.filter(
+    cat => !cat.is_income && !exemptGroupIds.has(cat.group),
+  );
   const incomeCategories = categories.filter(cat => cat.is_income);
 
   sheet.get().createStatic(sheetName, 'buffered', 0);
@@ -150,7 +157,7 @@ export function createSummary(groups, categories, prevSheetName, sheetName) {
   sheet.get().createDynamic(sheetName, 'total-budgeted', {
     initialValue: 0,
     dependencies: groups
-      .filter(group => !group.is_income)
+      .filter(group => !group.is_income && !group.budget_exempt)
       .map(group => `group-budget-${group.id}`),
     run: (...amounts) => {
       // Negate budgeted amount
@@ -211,7 +218,7 @@ export function createSummary(groups, categories, prevSheetName, sheetName) {
   sheet.get().createDynamic(sheetName, 'total-spent', {
     initialValue: 0,
     dependencies: groups
-      .filter(group => !group.is_income)
+      .filter(group => !group.is_income && !group.budget_exempt)
       .map(group => `group-sum-amount-${group.id}`),
     run: sumAmounts,
   });
@@ -219,7 +226,7 @@ export function createSummary(groups, categories, prevSheetName, sheetName) {
   sheet.get().createDynamic(sheetName, 'total-leftover', {
     initialValue: 0,
     dependencies: groups
-      .filter(group => !group.is_income)
+      .filter(group => !group.is_income && !group.budget_exempt)
       .map(group => `group-leftover-${group.id}`),
     run: sumAmounts,
   });
@@ -396,7 +403,48 @@ export function handleCategoryGroupChange(months, oldValue, newValue) {
         );
         createCategoryGroup({ ...group, categories }, sheetName);
 
-        addDeps(sheetName, group.id);
+        if (!group.budget_exempt) {
+          addDeps(sheetName, group.id);
+        }
+      });
+    }
+  } else if (oldValue && oldValue.budget_exempt !== newValue.budget_exempt) {
+    const group = newValue;
+
+    if (!group.is_income) {
+      const categories = db.runQuery<db.DbCategory>(
+        'SELECT * FROM categories WHERE tombstone = 0 AND cat_group = ?',
+        [group.id],
+        true,
+      );
+
+      months.forEach(month => {
+        const sheetName = monthUtils.sheetForMonth(month);
+        const prevSheetName = monthUtils.sheetForMonth(
+          monthUtils.prevMonth(month),
+        );
+
+        if (newValue.budget_exempt) {
+          removeDeps(sheetName, group.id);
+          categories.forEach(cat => {
+            sheet
+              .get()
+              .removeDependencies(sheetName, 'last-month-overspent', [
+                `${prevSheetName}!leftover-${cat.id}`,
+                `${prevSheetName}!carryover-${cat.id}`,
+              ]);
+          });
+        } else {
+          addDeps(sheetName, group.id);
+          categories.forEach(cat => {
+            sheet
+              .get()
+              .addDependencies(sheetName, 'last-month-overspent', [
+                `${prevSheetName}!leftover-${cat.id}`,
+                `${prevSheetName}!carryover-${cat.id}`,
+              ]);
+          });
+        }
       });
     }
   }

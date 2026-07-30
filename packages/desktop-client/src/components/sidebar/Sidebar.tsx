@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { useTranslation } from 'react-i18next';
 
 import { useResponsive } from '@actual-app/components/hooks/useResponsive';
-import { SvgAdd } from '@actual-app/components/icons/v1';
 import { styles } from '@actual-app/components/styles';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
@@ -16,21 +14,15 @@ import { FeatureErrorFallback } from '#components/FeatureErrorFallback';
 import { useGlobalPref } from '#hooks/useGlobalPref';
 import { useLocalPref } from '#hooks/useLocalPref';
 import { useResizeObserver } from '#hooks/useResizeObserver';
-import { replaceModal } from '#modals/modalsSlice';
-import { useDispatch } from '#redux';
 
-import { Accounts } from './Accounts';
 import { BudgetName } from './BudgetName';
 import { PrimaryButtons } from './PrimaryButtons';
-import { SecondaryButtons } from './SecondaryButtons';
 import { useSidebar } from './SidebarProvider';
 import { ToggleButton } from './ToggleButton';
 
 export function Sidebar() {
   const hasWindowButtons = !Platform.isBrowser && Platform.OS === 'mac';
 
-  const { t } = useTranslation();
-  const dispatch = useDispatch();
   const sidebar = useSidebar();
   const { width } = useResponsive();
   const [isFloating = false, setFloatingSidebarPref] =
@@ -58,10 +50,6 @@ export function Sidebar() {
 
   const onFloat = () => {
     setFloatingSidebarPref(!isFloating);
-  };
-
-  const onAddAccount = () => {
-    dispatch(replaceModal({ modal: { name: 'add-account', options: {} } }));
   };
 
   const containerRef = useResizeObserver<HTMLDivElement>(rect => {
@@ -94,7 +82,10 @@ export function Sidebar() {
           className={css({
             color: theme.sidebarItemText,
             height: '100%',
-            backgroundColor: theme.sidebarBackground,
+            background: theme.sidebarBackground,
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderRight: `1px solid ${theme.sidebarDivider}`,
             '& .float': {
               opacity: isFloating ? 1 : 0,
               transition: 'opacity .25s, width .25s',
@@ -104,9 +95,9 @@ export function Sidebar() {
               opacity: 1,
               width: hasWindowButtons ? null : 'auto',
             } as CSSProperties,
-            flex: 1,
-            ...styles.darkScrollbar,
+            ...styles.lightScrollbar,
           })}
+          style={{ display: 'flex', flexDirection: 'column' }}
         >
           <BudgetName>
             {!sidebar.alwaysFloats && (
@@ -116,25 +107,13 @@ export function Sidebar() {
 
           <View
             style={{
-              flexGrow: 1,
-              '@media screen and (max-height: 480px)': {
-                overflowY: 'auto',
-              },
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              overflowY: 'auto',
             }}
           >
             <PrimaryButtons />
-
-            <Accounts />
-
-            <SecondaryButtons
-              buttons={[
-                {
-                  title: t('Add account'),
-                  Icon: SvgAdd,
-                  onClick: onAddAccount,
-                },
-              ]}
-            />
           </View>
         </View>
       </Resizable>

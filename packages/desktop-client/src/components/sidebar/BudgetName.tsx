@@ -16,8 +16,10 @@ import * as Platform from '@actual-app/core/shared/platform';
 
 import { closeBudget } from '#budgetfiles/budgetfilesSlice';
 import { useContextMenu } from '#hooks/useContextMenu';
+import { useIsTestEnv } from '#hooks/useIsTestEnv';
 import { useMetadataPref } from '#hooks/useMetadataPref';
 import { useNavigate } from '#hooks/useNavigate';
+import { useSyncServerStatus } from '#hooks/useSyncServerStatus';
 import { pushModal } from '#modals/modalsSlice';
 import { useDispatch } from '#redux';
 
@@ -31,11 +33,11 @@ export function BudgetName({ children }: BudgetNameProps) {
   return (
     <View
       style={{
-        paddingTop: 35,
+        paddingTop: 28,
         height: 30,
         flexDirection: 'row',
         alignItems: 'center',
-        margin: '0 8px 23px 20px',
+        margin: '0 8px 16px 16px',
         userSelect: 'none',
         transition: 'padding .4s',
         ...(hasWindowButtons
@@ -65,12 +67,28 @@ function EditableBudgetName() {
   const { setMenuOpen, menuOpen, handleContextMenu, resetPosition, position } =
     useContextMenu();
 
+  const syncServerStatus = useSyncServerStatus();
+  const isTestEnv = useIsTestEnv();
+  const isUsingServer = syncServerStatus !== 'no-server' || isTestEnv;
+
   function onMenuSelect(type: string) {
     setMenuOpen(false);
 
     switch (type) {
       case 'rename':
         setEditing(true);
+        break;
+      case 'payees':
+        void navigate('/payees');
+        break;
+      case 'rules':
+        void navigate('/rules');
+        break;
+      case 'bank-sync':
+        void navigate('/bank-sync');
+        break;
+      case 'tags':
+        void navigate('/tags');
         break;
       case 'settings':
         void navigate('/settings');
@@ -91,12 +109,18 @@ function EditableBudgetName() {
     }
   }
 
-  const items = [
-    { name: 'rename', text: t('Rename budget') },
+  type MenuItem = { name: string; text: string };
+  const items: (MenuItem | typeof Menu.line)[] = [
+    { name: 'payees', text: t('Payees') },
+    { name: 'rules', text: t('Rules') },
+    ...(isUsingServer ? [{ name: 'bank-sync', text: t('Bank Sync') }] : []),
+    { name: 'tags', text: t('Tags') },
     { name: 'settings', text: t('Settings') },
-    isElectron() ? { name: 'loadBackup', text: t('Load Backup…') } : null,
+    Menu.line,
+    { name: 'rename', text: t('Rename budget') },
+    ...(isElectron() ? [{ name: 'loadBackup', text: t('Load Backup…') }] : []),
     { name: 'close', text: t('Switch file') },
-  ].filter(item => item !== null);
+  ];
 
   if (editing) {
     return (
@@ -127,8 +151,9 @@ function EditableBudgetName() {
         variant="bare"
         style={{
           color: theme.sidebarBudgetName,
-          fontSize: 16,
-          fontWeight: 500,
+          fontSize: 18,
+          fontWeight: 800,
+          letterSpacing: '-0.02em',
           marginLeft: -5,
           flex: '0 auto',
         }}

@@ -1779,7 +1779,12 @@ class AccountInternal extends PureComponent<
             registerDispatch={dispatch => (this.dispatchSelected = dispatch)}
             selectAllFilter={selectAllFilter}
           >
-            <View style={styles.page}>
+            <View
+              style={{
+                ...styles.page,
+                padding: '0 16px 16px',
+              }}
+            >
               <AccountHeader
                 tableRef={this.table}
                 isNameEditable={isNameEditable ?? false}
@@ -1842,7 +1847,13 @@ class AccountInternal extends PureComponent<
                 onMergeTransactions={this.onMergeTransactions}
               />
 
-              <View style={{ flex: 1 }}>
+              <View
+                style={{
+                  flex: 1,
+                  ...styles.glassCard,
+                  overflow: 'hidden',
+                }}
+              >
                 <TransactionList
                   headerContent={undefined}
                   // @ts-expect-error - fix me

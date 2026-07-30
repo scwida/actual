@@ -156,92 +156,116 @@ Before finishing any task, confirm all of these:
 
 ## 5. Design System
 
-This design system is derived from the Paycheck Planner mockup. Apply it consistently across all new UI. Always check `packages/component-library/src/` for existing tokens and components before building new ones.
+**Source of truth:** `budget-page-v9.html` — the frosted glass mockup the user provided on 2026-05-13. All UI decisions derive from that file. Override any previous instructions that conflict with it.
+
+This design is an iOS 26-style frosted glass / glass morphism aesthetic. Apply it to ALL pages and components across the app. Check `packages/component-library/src/styles.ts` for the `glassCard` helper before writing custom glass styles.
+
+### Page Background
+
+Layered radial gradient applied to the `<body>` / page root:
+
+```
+radial-gradient(ellipse at 12% 88%, rgba(140,165,200,0.65) 0%, transparent 38%),
+radial-gradient(ellipse at 88% 6%,  rgba(185,170,225,0.60) 0%, transparent 36%),
+radial-gradient(ellipse at 50% 50%, rgba(210,205,215,0.30) 0%, transparent 60%),
+linear-gradient(155deg, #eae6e3 0%, #ddd8d5 100%)
+```
+
+### Glass Card — `styles.glassCard`
+
+Every surface (cards, panels, sidebar, dialogs) uses this treatment:
+
+```
+background:        rgba(255,255,255,0.25)
+backdrop-filter:   blur(32px)
+border:            1px solid rgba(255,255,255,0.50)
+box-shadow:        0 8px 28px rgba(0,0,0,0.08),
+                   0 2px 6px rgba(0,0,0,0.04),
+                   inset 0 1px 0 rgba(255,255,255,0.65)
+border-radius:     18px
+```
+
+Row-level glass (category rows, list items):
+
+```
+background:    rgba(255,255,255,0.22)
+backdrop-filter: blur(8px)
+border:        1px solid rgba(255,255,255,0.40)
+```
 
 ### Typography
 
-- **Font:** Inter (Google Fonts) — weights 300–700
-- **Scale:** `text-xs` 0.75rem / `text-sm` 0.875rem (default) / `text-base` 1rem / `text-lg` 1.125rem / `text-xl` 1.5rem
+- **Font:** Inter — weights 400/500/600/700/800
+- **Page text:** `#1c1c1e` (primary), `#6e6e73` (muted/secondary)
+- **Budget name in sidebar:** 23px, weight 800, letter-spacing -0.04em
+- **Month heading in top card:** 26px, weight 800, letter-spacing -0.04em
+- **Section headers:** 11px, weight 700, uppercase, letter-spacing 0.05em
 
-### Color Tokens
-
-**Light Mode:**
-
-```
---color-bg: #f5f7fa
---color-surface: #ffffff
---color-surface-2: #f9fafb
---color-surface-offset: #f0f2f5
---color-divider: #e4e7ec
---color-border: #d0d5dd
---color-text: #101828
---color-text-muted: #475467
---color-text-faint: #98a2b3
---color-primary: #0d7e82
---color-primary-hover: #095f63
---color-primary-light: #e6f4f5
---color-success: #027a48
---color-warning: #b54708
---color-error: #b42318
---color-snowball: #6941c6
---color-snowball-bg: #f4f3ff
-```
-
-**Dark Mode** (`data-theme="dark"` on `<html>`):
+### Data Indicator Colors (pills, numbers)
 
 ```
---color-bg: #101828
---color-surface: #1d2939
---color-surface-2: #253347
---color-primary: #4db8bc
---color-success: #12b76a
---color-warning: #f79009
---color-error: #f97066
---color-snowball: #9b8afb
---color-snowball-bg: #1f1148
+Positive / funded:       bg rgba(52,199,89,0.18)   text #1a7a35   (green)
+Partial / warning:       bg rgba(255,204,0,0.22)   text #7a5800   (yellow)
+Zero / neutral:          bg rgba(120,120,130,0.12) text #5a5a65   (gray)
+Negative / overbudget:   bg rgba(180,35,24,0.14)   text #b42318   (red)
+Debt snowball:           bg (snowball-bg)          text #6941c6   (purple)
 ```
 
-**Sidebar (always dark, regardless of theme):**
+### Sidebar
+
+The sidebar uses the **same** glass material as the content area — it is NOT dark. It is a light frosted panel.
 
 ```
---sidebar-bg: #1d2939
---sidebar-text: #d0d5dd
---sidebar-muted: #667085
---sidebar-accent: #4db8bc
+background:  rgba(255,255,255,0.25)  +  backdrop-filter: blur(32px)
+border-right: 1px solid rgba(255,255,255,0.22)
+text:        #1c1c1e  (same as page text — light background)
+muted text:  #6e6e73
+
+Active nav item:
+  background: rgba(255,255,255,0.30)
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06)
+  font-weight: 600
+
+Hover nav item:
+  background: rgba(255,255,255,0.20)
+
+Nav icon chips:
+  width/height: 18px, border-radius: 5px
+  border: 1px solid rgba(0,0,0,0.08)
+  background: rgba(255,255,255,0.35)
 ```
 
-### Spacing, Radius & Shadows
+### Spacing & Radius
 
 ```
-Spacing: --space-1: 0.25rem | --space-2: 0.5rem | --space-3: 0.75rem
-         --space-4: 1rem    | --space-5: 1.25rem | --space-6: 1.5rem | --space-8: 2rem
-
-Radius:  --radius-sm: 0.375rem | --radius-md: 0.5rem | --radius-lg: 0.75rem
-         --radius-xl: 1rem     | --radius-full: 9999px
-
-Shadows: --shadow-sm: 0 1px 2px rgba(16,24,40,0.05)
-         --shadow-md: 0 4px 8px -2px rgba(16,24,40,0.1), 0 2px 4px -2px rgba(16,24,40,0.06)
-
-Motion:  --transition: 150ms cubic-bezier(0.16, 1, 0.3, 1)
+Card radius:  18px (outer cards), 11px (row-level elements)
+Row gap:      10–12px between card sections
+Nav padding:  7px 10px per item, border-radius 9px
 ```
+
+### Buttons
+
+- Primary: teal background `#0d7e82`, white text, border-radius 8px
+- Secondary: `rgba(255,255,255,0.30)` glass background, `#1c1c1e` text, glass border
+- Bare/icon: transparent, `#6e6e73` color
 
 ---
 
 ## 6. Layout Structure
 
 ```
-body (flex, horizontal)
-├── #sidebar (240px, fixed dark, full height)
-│   ├── Logo + App name + Budget name
-│   ├── Nav sections with labels
-│   ├── Nav items (active = left accent bar + slightly brighter)
-│   └── Dark/Light mode toggle (pinned to bottom)
-└── #main-content (flex-1)
-    ├── #topbar (56px height, title + subtitle + action buttons right-aligned)
-    └── #page-content (scrollable, padded)
+body (flex, horizontal, page background gradient)
+├── #sidebar (240px resizable, LIGHT frosted glass, full height)
+│   ├── Budget name (23px, 800 weight)
+│   ├── Nav items (glass active state, icon chips)
+│   └── Account list (group labels + rows with balances)
+└── #main-content (flex-1, transparent)
+    └── #page-content (scrollable, 16px padding)
+        — Budget page: top glass card (month nav + TBB) + table glass card + right summary panel
+        — Other pages: glass card(s) as appropriate
 ```
 
-**Mobile (≤768px):** Sidebar becomes an off-screen drawer. Page layout collapses to single column.
+**Mobile (≤768px):** Sidebar becomes an off-screen drawer.
 
 ---
 

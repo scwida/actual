@@ -237,10 +237,6 @@ export const BudgetCategories = memo<BudgetCategoriesProps>(
       <View
         style={{
           marginBottom: 10,
-          backgroundColor: theme.budgetCurrentMonth, // match budget colors, not generic table colors.
-          overflow: 'hidden',
-          boxShadow: styles.cardShadow,
-          borderRadius: '0 0 4px 4px',
           flex: 1,
         }}
       >
@@ -304,13 +300,20 @@ export const BudgetCategories = memo<BudgetCategoriesProps>(
                 />
               );
               break;
-            case 'expense-category':
+            case 'expense-category': {
+              const nextItem = items[idx + 1];
+              const isLastInGroup =
+                !nextItem ||
+                nextItem.type === 'expense-group' ||
+                nextItem.type === 'income-separator' ||
+                nextItem.type === 'new-group';
               content = (
                 <ExpenseCategory
                   cat={item.value}
                   categoryGroup={item.group}
                   editingCell={editingCell}
                   dragState={dragState}
+                  isLastInGroup={isLastInGroup}
                   onEditName={onEditName}
                   onEditMonth={onEditMonth}
                   onSave={_onSaveCategory}
@@ -322,12 +325,12 @@ export const BudgetCategories = memo<BudgetCategoriesProps>(
                 />
               );
               break;
+            }
             case 'income-separator':
               content = (
                 <View
                   style={{
                     height: styles.incomeHeaderHeight,
-                    backgroundColor: theme.budgetCurrentMonth,
                   }}
                 >
                   <IncomeHeader onShowNewGroup={onShowNewGroup} />
@@ -383,17 +386,7 @@ export const BudgetCategories = memo<BudgetCategoriesProps>(
               }
               value={pos}
             >
-              <View
-                style={
-                  dragState
-                    ? {}
-                    : {
-                        ':hover': { backgroundColor: theme.budgetCurrentMonth },
-                      }
-                }
-              >
-                {content}
-              </View>
+              <View>{content}</View>
             </DropHighlightPosContext.Provider>
           );
         })}

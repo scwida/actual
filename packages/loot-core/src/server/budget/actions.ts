@@ -64,6 +64,7 @@ type BudgetData = {
   is_income: 1 | 0;
   hidden: 1 | 0;
   group_hidden: 1 | 0;
+  group_budget_exempt: 1 | 0;
   category: string;
   amount: number;
 };
@@ -76,11 +77,11 @@ function getBudgetData<T extends BudgetTable>(
     (db.DbReflectBudget | db.DbZeroBudget) &
       Pick<
         db.DbViewCategoryWithGroupHidden,
-        'is_income' | 'hidden' | 'group_hidden'
+        'is_income' | 'hidden' | 'group_hidden' | 'group_budget_exempt'
       >
   >(
     `
-    SELECT b.*, c.is_income, c.hidden, g.hidden AS group_hidden
+    SELECT b.*, c.is_income, c.hidden, g.hidden AS group_hidden, g.budget_exempt AS group_budget_exempt
     FROM ${table} b
     LEFT JOIN categories c ON b.category = c.id
     LEFT JOIN category_groups g ON c.cat_group = g.id
@@ -224,7 +225,11 @@ export async function copyPreviousMonth({
       if (prevBudget.is_income === 1 && !isTrackingBudget()) {
         return;
       }
-      if (prevBudget.hidden === 1 || prevBudget.group_hidden === 1) {
+      if (
+        prevBudget.hidden === 1 ||
+        prevBudget.group_hidden === 1 ||
+        prevBudget.group_budget_exempt === 1
+      ) {
         return;
       }
       void setBudget({
@@ -278,7 +283,7 @@ export async function set3MonthAvg({
   SELECT c.*
   FROM categories c
   LEFT JOIN category_groups g ON c.cat_group = g.id
-  WHERE c.tombstone = 0 AND c.hidden = 0 AND g.hidden = 0
+  WHERE c.tombstone = 0 AND c.hidden = 0 AND g.hidden = 0 AND g.budget_exempt = 0
   `,
   );
 
@@ -326,7 +331,7 @@ export async function set12MonthAvg({
   SELECT c.*
   FROM categories c
   LEFT JOIN category_groups g ON c.cat_group = g.id
-  WHERE c.tombstone = 0 AND c.hidden = 0 AND g.hidden = 0
+  WHERE c.tombstone = 0 AND c.hidden = 0 AND g.hidden = 0 AND g.budget_exempt = 0
   `,
   );
 
@@ -350,7 +355,7 @@ export async function set6MonthAvg({
   SELECT c.*
   FROM categories c
   LEFT JOIN category_groups g ON c.cat_group = g.id
-  WHERE c.tombstone = 0 AND c.hidden = 0 AND g.hidden = 0
+  WHERE c.tombstone = 0 AND c.hidden = 0 AND g.hidden = 0 AND g.budget_exempt = 0
   `,
   );
 

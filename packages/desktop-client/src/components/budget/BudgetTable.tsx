@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 
 import { styles } from '@actual-app/components/styles';
-import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import { q } from '@actual-app/core/shared/query';
 import type {
@@ -223,38 +222,40 @@ export function BudgetTable(props: BudgetTableProps) {
       data-testid="budget-table"
       style={{
         flex: 1,
+        ...styles.glassCard,
+        overflow: 'hidden',
         ...(styles.lightScrollbar && {
           '& ::-webkit-scrollbar': {
             backgroundColor: 'transparent',
           },
           '& ::-webkit-scrollbar-thumb:vertical': {
-            backgroundColor: theme.pageTextSubdued,
-            // changed from tableHeaderBackground. pageTextSubdued is always visible on pageBackground
+            backgroundColor: 'rgba(0,0,0,0.15)',
           },
         }),
       }}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          overflow: 'hidden',
-          flexShrink: 0,
-          // This is necessary to align with the table because the
-          // table has this padding to allow the shadow to show
-          paddingLeft: 5,
-          paddingRight: 5 + getScrollbarWidth(),
-        }}
-      >
-        <View style={{ width: 200 + 100 * categoryExpandedState }} />
-        <MonthsProvider
-          startMonth={prewarmStartMonth}
-          numMonths={numMonths}
-          monthBounds={monthBounds}
-          type={type}
+      {/* Multi-month summary headers — only when more than one month shown */}
+      {numMonths > 1 && (
+        <View
+          style={{
+            flexDirection: 'row',
+            overflow: 'hidden',
+            flexShrink: 0,
+            paddingLeft: 14,
+            paddingRight: 14 + getScrollbarWidth(),
+          }}
         >
-          <BudgetSummaries />
-        </MonthsProvider>
-      </View>
+          <View style={{ width: 200 + 100 * categoryExpandedState }} />
+          <MonthsProvider
+            startMonth={prewarmStartMonth}
+            numMonths={numMonths}
+            monthBounds={monthBounds}
+            type={type}
+          >
+            <BudgetSummaries />
+          </MonthsProvider>
+        </View>
+      )}
 
       <MonthsProvider
         startMonth={startMonth}
@@ -272,8 +273,9 @@ export function BudgetTable(props: BudgetTableProps) {
             overflowY: 'scroll',
             overflowAnchor: 'none',
             flex: 1,
-            paddingLeft: 5,
-            paddingRight: 5,
+            paddingLeft: 14,
+            paddingRight: 14,
+            paddingBottom: 14,
           }}
         >
           <View

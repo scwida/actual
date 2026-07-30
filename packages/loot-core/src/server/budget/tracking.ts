@@ -91,7 +91,7 @@ export function createCategoryGroup(group, sheetName) {
 export function createSummary(groups, sheetName) {
   const incomeGroup = groups.filter(group => group.is_income)[0];
   const expenseGroups = groups.filter(
-    group => !group.is_income && !group.hidden,
+    group => !group.is_income && !group.hidden && !group.budget_exempt,
   );
 
   sheet.get().createDynamic(sheetName, 'total-budgeted', {
@@ -291,7 +291,9 @@ export function handleCategoryGroupChange(months, oldValue, newValue) {
       );
       createCategoryGroup({ ...group, categories }, sheetName);
 
-      addDeps(sheetName, group.id);
+      if (!group.budget_exempt && !group.hidden) {
+        addDeps(sheetName, group.id);
+      }
     });
   } else if (oldValue && oldValue.hidden !== newValue.hidden) {
     const group = newValue;
@@ -300,9 +302,22 @@ export function handleCategoryGroupChange(months, oldValue, newValue) {
       const sheetName = monthUtils.sheetForMonth(month);
       if (newValue.hidden) {
         removeDeps(sheetName, group.id);
-      } else {
+      } else if (!newValue.budget_exempt) {
         addDeps(sheetName, group.id);
       }
     });
+  } else if (oldValue && oldValue.budget_exempt !== newValue.budget_exempt) {
+    const group = newValue;
+
+    if (!group.is_income) {
+      months.forEach(month => {
+        const sheetName = monthUtils.sheetForMonth(month);
+        if (newValue.budget_exempt) {
+          removeDeps(sheetName, group.id);
+        } else if (!newValue.hidden) {
+          addDeps(sheetName, group.id);
+        }
+      });
+    }
   }
 }

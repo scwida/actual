@@ -57,7 +57,7 @@ import {
   mergeConditionalPrivacyFilterProps,
 } from './PrivacyFilter';
 
-export const ROW_HEIGHT = 32;
+export const ROW_HEIGHT = 40;
 
 function fireBlur(onBlur, e) {
   if (document.hasFocus()) {
@@ -222,6 +222,12 @@ export function Cell({
               padding: '0 5px',
               alignItems: 'center',
               ...styles.smallText,
+              ...(onExpose && {
+                borderRadius: 3,
+                backgroundColor: 'rgba(255, 255, 255, 0.35)',
+                margin: '2px',
+                padding: '0 3px',
+              }),
               ...valueStyle,
             }}
             // Can't use click because we only want to expose the cell if
@@ -311,6 +317,10 @@ export const Row = forwardRef<HTMLDivElement, RowProps>(function Row(
 const inputCellStyle = {
   padding: '5px 3px',
   margin: '0 1px',
+  border: 'none',
+  borderRadius: 3,
+  backgroundColor: theme.tableInputBackground,
+  boxShadow: 'inset 0 0 0 1.5px ' + theme.tableInputBorder,
 };
 
 const readonlyInputStyle = {

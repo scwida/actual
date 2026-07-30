@@ -94,6 +94,7 @@ export const schema = {
     name: f('string'),
     is_income: f('boolean'),
     hidden: f('boolean'),
+    budget_exempt: f('boolean'),
     sort_order: f('float'),
     tombstone: f('boolean'),
   },

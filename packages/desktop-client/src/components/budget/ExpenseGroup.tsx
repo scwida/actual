@@ -86,6 +86,7 @@ export function ExpenseGroup({
   });
 
   const { ExpenseGroupComponent: MonthComponent } = useBudgetComponents();
+  const renderMonthsStyle = {};
 
   return (
     <Row
@@ -93,7 +94,14 @@ export function ExpenseGroup({
       style={{
         fontWeight: 600,
         opacity: group.hidden ? 0.33 : undefined,
-        backgroundColor: theme.budgetHeaderCurrentMonth, //use budget colors
+        background: 'rgba(255,255,255,0.30)',
+        borderRadius: 11,
+        marginTop: 14,
+        marginBottom: 5,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        ...(group.budget_exempt && {
+          borderLeft: `3px solid ${theme.warningText}`,
+        }),
       }}
     >
       {dragState && !dragState.preview && dragState.type === 'group' && (
@@ -140,7 +148,7 @@ export function ExpenseGroup({
           onApplyBudgetTemplatesInGroup={onApplyBudgetTemplatesInGroup}
           onShowNewCategory={onShowNewCategory}
         />
-        <RenderMonths>
+        <RenderMonths style={renderMonthsStyle}>
           {({ month }) => <MonthComponent month={month} group={group} />}
         </RenderMonths>
       </View>

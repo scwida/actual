@@ -22,6 +22,7 @@ type ToBudgetProps = {
   style?: CSSProperties;
   amountStyle?: CSSProperties;
   isCollapsed?: boolean;
+  hideProgress?: boolean;
 };
 export function ToBudget({
   month,
@@ -30,6 +31,7 @@ export function ToBudget({
   style,
   amountStyle,
   isCollapsed = false,
+  hideProgress = false,
 }: ToBudgetProps) {
   const [menuStep, _setMenuStep] = useState<string>('actions');
   const triggerRef = useRef(null);
@@ -75,6 +77,7 @@ export function ToBudget({
           amountStyle={amountStyle}
           isTotalsListTooltipDisabled={!isCollapsed || menuOpen}
           onContextMenu={handleContextMenu}
+          hideProgress={hideProgress}
         />
       </View>
 

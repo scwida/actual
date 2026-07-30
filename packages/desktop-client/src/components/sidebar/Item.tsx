@@ -9,7 +9,6 @@ import type {
 } from 'react';
 
 import { Block } from '@actual-app/components/block';
-import { styles } from '@actual-app/components/styles';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 
@@ -42,6 +41,7 @@ export function Item({
 }: ItemProps) {
   const hoverStyle = {
     backgroundColor: theme.sidebarItemBackgroundHover,
+    borderRadius: 9,
   };
 
   const content = (
@@ -49,24 +49,26 @@ export function Item({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        height: 20,
+        height: 22,
       }}
     >
-      <Icon width={15} height={15} />
-      <Block style={{ marginLeft: 8 }}>{title}</Block>
+      <Icon width={16} height={16} style={{ flexShrink: 0, opacity: 0.75 }} />
+      <Block style={{ marginLeft: 9, fontWeight: 500 }}>{title}</Block>
       <View style={{ flex: 1 }} />
     </View>
   );
 
   return (
-    <View style={{ flexShrink: 0, ...style }}>
+    <View style={{ flexShrink: 0, paddingLeft: 8, paddingRight: 8, ...style }}>
       <ItemContent
         style={{
-          ...styles.mediumText,
-          paddingTop: 9,
-          paddingBottom: 9,
-          paddingLeft: 19 + indent,
+          fontSize: 13.5,
+          fontWeight: 500,
+          paddingTop: 8,
+          paddingBottom: 8,
+          paddingLeft: 10 + indent,
           paddingRight: 10,
+          borderRadius: 9,
           textDecoration: 'none',
           color: theme.sidebarItemText,
           ...(forceHover ? hoverStyle : {}),
@@ -74,9 +76,11 @@ export function Item({
         }}
         forceActive={forceActive}
         activeStyle={{
-          borderLeft: '4px solid ' + theme.sidebarItemTextSelected,
-          paddingLeft: 19 + indent - 4,
+          backgroundColor: theme.sidebarItemBackgroundSelected,
           color: theme.sidebarItemTextSelected,
+          borderRadius: 9,
+          boxShadow:
+            '0 1px 4px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.55)',
         }}
         to={to}
         onClick={onClick}

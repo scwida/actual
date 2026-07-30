@@ -2,7 +2,6 @@
 import React from 'react';
 import type { ComponentProps } from 'react';
 
-import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import type {
   CategoryEntity,
@@ -28,6 +27,7 @@ type ExpenseCategoryProps = {
   categoryGroup?: CategoryGroupEntity;
   editingCell: { id: string; cell: string } | null;
   dragState: DragState<CategoryEntity> | DragState<CategoryGroupEntity> | null;
+  isLastInGroup?: boolean;
   onEditName?: ComponentProps<typeof SidebarCategory>['onEditName'];
   onEditMonth?: (id: CategoryEntity['id'], month: string) => void;
   onSave?: ComponentProps<typeof SidebarCategory>['onSave'];
@@ -73,14 +73,21 @@ export function ExpenseCategory({
   });
 
   const { ExpenseCategoryComponent: MonthComponent } = useBudgetComponents();
+  const renderMonthsStyle = {};
 
   return (
     <Row
       innerRef={dropRef}
       collapsed
       style={{
-        backgroundColor: theme.budgetCurrentMonth,
+        background: 'rgba(255,255,255,0.22)',
+        borderRadius: 11,
+        marginBottom: 5,
         opacity: cat.hidden || categoryGroup?.hidden ? 0.5 : undefined,
+        height: 'auto',
+        flex: '0 0 auto',
+        minHeight: 44,
+        alignItems: 'stretch',
       }}
     >
       <DropHighlight pos={dropPos} offset={{ top: 1 }} />
@@ -102,7 +109,7 @@ export function ExpenseCategory({
           onDelete={onDelete}
         />
 
-        <RenderMonths>
+        <RenderMonths style={renderMonthsStyle}>
           {({ month }) => (
             <MonthComponent
               month={month}

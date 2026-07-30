@@ -7,5 +7,6 @@ export type CategoryGroupEntity = {
   sort_order?: number;
   tombstone?: boolean;
   hidden?: boolean;
+  budget_exempt?: boolean;
   categories?: CategoryEntity[];
 };

@@ -10,10 +10,10 @@ import {
 } from '@actual-app/components/icons/v2';
 import { Menu } from '@actual-app/components/menu';
 import { Popover } from '@actual-app/components/popover';
-import { styles } from '@actual-app/components/styles';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 
+import { seedDemoCategories } from '#budget/seedDemoCategories';
 import { useGlobalPref } from '#hooks/useGlobalPref';
 
 import { RenderMonths } from './RenderMonths';
@@ -36,7 +36,12 @@ export const BudgetTotals = memo(function BudgetTotals({
   const [categoryExpandedStatePref, setCategoryExpandedStatePref] =
     useGlobalPref('categoryExpandedState');
   const categoryExpandedState = categoryExpandedStatePref ?? 0;
+  const [goalChipVisibilityPref, setGoalChipVisibilityPref] = useGlobalPref(
+    'budgetGoalChipVisibility',
+  );
+  const goalChipVisibility = goalChipVisibilityPref ?? 'expenses';
   const [menuOpen, setMenuOpen] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const triggerRef = useRef(null);
 
   const cycleExpandedState = () => {
@@ -58,19 +63,18 @@ export const BudgetTotals = memo(function BudgetTotals({
   };
 
   const { BudgetTotalsComponent: MonthComponent } = useBudgetComponents();
+  const renderMonthsStyle = {};
 
   return (
     <View
       data-testid="budget-totals"
       style={{
-        backgroundColor: theme.budgetCurrentMonth, //use budget colors, not generic table colors
         flexDirection: 'row',
         flexShrink: 0,
-        boxShadow: styles.cardShadow,
-        marginLeft: 5,
-        marginRight: 5 + getScrollbarWidth(),
-        borderRadius: '4px 4px 0 0',
-        borderBottom: '1px solid ' + theme.tableBorder,
+        marginLeft: 14,
+        marginRight: 14 + getScrollbarWidth(),
+        paddingTop: 8,
+        paddingBottom: 6,
         '& .hover-visible': {
           opacity: 0,
           transition: 'opacity .25s',
@@ -82,7 +86,8 @@ export const BudgetTotals = memo(function BudgetTotals({
     >
       <View
         style={{
-          width: 200 + 100 * categoryExpandedState,
+          flex: 1,
+          minWidth: 0,
           color: theme.tableHeaderText,
           justifyContent: 'center',
           paddingLeft: 5,
@@ -128,7 +133,13 @@ export const BudgetTotals = memo(function BudgetTotals({
             />
           )}
         </Button>
-        <View style={{ flexGrow: '1' }}>
+        <View
+          style={{
+            flexGrow: '1',
+            fontSize: 11.5,
+            fontWeight: 600,
+          }}
+        >
           <Trans>Category</Trans>
         </View>
         <Button
@@ -159,6 +170,15 @@ export const BudgetTotals = memo(function BudgetTotals({
                 expandAllCategories();
               } else if (type === 'collapseAllCategories') {
                 collapseAllCategories();
+              } else if (type === 'seed-demo-categories') {
+                setSeeding(true);
+                void seedDemoCategories().finally(() => setSeeding(false));
+              } else if (type === 'goal-chips-all') {
+                setGoalChipVisibilityPref('all');
+              } else if (type === 'goal-chips-expenses') {
+                setGoalChipVisibilityPref('expenses');
+              } else if (type === 'goal-chips-hidden') {
+                setGoalChipVisibilityPref('hidden');
               }
               setMenuOpen(false);
             }}
@@ -175,11 +195,38 @@ export const BudgetTotals = memo(function BudgetTotals({
                 name: 'collapseAllCategories',
                 text: t('Collapse all'),
               },
+              Menu.line,
+              {
+                name: 'goal-chips-all',
+                text:
+                  goalChipVisibility === 'all'
+                    ? t('✓ Goal chips: All categories')
+                    : t('Goal chips: All categories'),
+              },
+              {
+                name: 'goal-chips-expenses',
+                text:
+                  goalChipVisibility === 'expenses'
+                    ? t('✓ Goal chips: Expenses only')
+                    : t('Goal chips: Expenses only'),
+              },
+              {
+                name: 'goal-chips-hidden',
+                text:
+                  goalChipVisibility === 'hidden'
+                    ? t('✓ Goal chips: Hidden')
+                    : t('Goal chips: Hidden'),
+              },
+              Menu.line,
+              {
+                name: 'seed-demo-categories',
+                text: seeding ? t('Loading…') : t('Load demo categories'),
+              },
             ]}
           />
         </Popover>
       </View>
-      <RenderMonths>
+      <RenderMonths style={renderMonthsStyle}>
         <MonthComponent />
       </RenderMonths>
     </View>
