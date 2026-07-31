@@ -1,6 +1,13 @@
 import { useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
+import type { IntegerAmount } from '@actual-app/core/shared/util';
+import { integerToAmount } from '@actual-app/core/shared/util';
+import type { TransObjectLiteral } from '@actual-app/core/types/util';
+
+import { FinancialText } from '#components/FinancialText';
+import { AmountInput } from '#components/util/AmountInput';
+import { useFormat } from '#hooks/useFormat';
 import { useSheetValue } from '#hooks/useSheetValue';
 import { envelopeBudget, trackingBudget } from '#spreadsheet/bindings';
 
@@ -16,9 +23,23 @@ export type PlannerCategoryRow = {
   id: string;
   name: string;
   groupName?: string;
-  planned: number;
-  alreadyBudgeted: number;
+  /** This paycheck's draft (or, once committed, approved) allocation. */
+  plannedAmount: IntegerAmount;
+  /** Sum of allocations from earlier paychecks this month, in cents. */
+  alreadyBudgetedAmount: IntegerAmount;
+  /** The envelope's current real balance, live -- see useEnvelopeBalances. */
+  currentBalance: IntegerAmount;
+  /**
+   * The envelope's real balance snapshot taken when this allocation was
+   * first drafted (`PlannedAllocation.envelope_balance_at_draft`). `null`
+   * when there's no allocation drafted for this envelope yet. Compared
+   * against `currentBalance` for the live drift indicator (CLAUDE.md "Live
+   * drift indicators").
+   */
+  balanceAtDraft: IntegerAmount | null;
   isSnowball?: boolean;
+  /** True once the paycheck is committed -- allocations are locked in. */
+  readOnly?: boolean;
 };
 
 type RowItemProps = {
@@ -26,7 +47,7 @@ type RowItemProps = {
   budgetType: 'envelope' | 'tracking';
   insertBefore?: boolean;
   insertAfter?: boolean;
-  onChangeAmount: (id: string, value: string) => void;
+  onChangeAmount: (id: string, amount: IntegerAmount) => void;
   onRowDragOver: (rowId: string, before: boolean) => void;
   onRowDragLeave: () => void;
 };
@@ -41,6 +62,7 @@ function PlannerRowItem({
   onRowDragLeave,
 }: RowItemProps) {
   const { t } = useTranslation();
+  const format = useFormat();
   const { goals, setGoal, removeGoal } = useGoalsContext();
   const goal = goals[row.id];
   const [goalModalOpen, setGoalModalOpen] = useState(false);
@@ -58,8 +80,9 @@ function PlannerRowItem({
 
   const monthlyTarget = goal ? goal.amount : (budgetedCents as number) / 100;
 
-  const assigned = row.planned;
-  const totalAllocated = row.alreadyBudgeted + assigned;
+  const assigned = integerToAmount(row.plannedAmount);
+  const alreadyBudgeted = integerToAmount(row.alreadyBudgetedAmount);
+  const totalAllocated = alreadyBudgeted + assigned;
   const diff = totalAllocated - monthlyTarget;
   const pct =
     monthlyTarget > 0 ? Math.min(totalAllocated / monthlyTarget, 1) : 0;
@@ -69,6 +92,9 @@ function PlannerRowItem({
       : pct > 0
         ? 'var(--color-warning)'
         : 'var(--color-text-faint)';
+
+  const drift =
+    row.balanceAtDraft != null ? row.currentBalance - row.balanceAtDraft : null;
 
   return (
     <>
@@ -129,7 +155,9 @@ function PlannerRowItem({
               }}
               title={t('Edit goal')}
             >
-              {currencyFormatter.format(monthlyTarget)}
+              <FinancialText as="span">
+                {currencyFormatter.format(monthlyTarget)}
+              </FinancialText>
             </button>
           ) : (
             <button
@@ -153,32 +181,69 @@ function PlannerRowItem({
         </td>
 
         <td className="num">
-          <span
+          <FinancialText
+            as="span"
             style={{
               color:
-                row.alreadyBudgeted > 0
+                row.alreadyBudgetedAmount > 0
                   ? 'var(--color-text)'
                   : 'var(--color-text-faint)',
             }}
           >
-            {currencyFormatter.format(row.alreadyBudgeted)}
-          </span>
+            {format(row.alreadyBudgetedAmount, 'financial')}
+          </FinancialText>
         </td>
 
         <td className="num">
-          <input
-            className="amount-input"
-            type="number"
-            min="0"
-            step="0.01"
-            value={assigned}
-            onChange={e => onChangeAmount(row.id, e.target.value)}
-            aria-label={t('Amount for {{name}}', { name: row.name })}
-          />
+          {row.readOnly ? (
+            <FinancialText as="span" style={{ fontWeight: 600 }}>
+              {format(row.plannedAmount, 'financial')}
+            </FinancialText>
+          ) : (
+            <AmountInput
+              value={row.plannedAmount}
+              sign="+"
+              onUpdate={amount => onChangeAmount(row.id, amount)}
+              style={{ maxWidth: 120, marginLeft: 'auto' }}
+              inputClassName="amount-input"
+              id={`planner-amount-${row.id}`}
+            />
+          )}
+          {drift != null && (
+            <div className="drift-line">
+              <Trans>
+                Envelope now:{' '}
+                <FinancialText as="span">
+                  {
+                    {
+                      balance: format(row.currentBalance, 'financial'),
+                    } as TransObjectLiteral
+                  }
+                </FinancialText>
+              </Trans>
+              {drift !== 0 && (
+                <span className={drift > 0 ? 'diff-positive' : 'diff-negative'}>
+                  {' '}
+                  <Trans>
+                    (
+                    <FinancialText as="span">
+                      {
+                        {
+                          drift: format(drift, 'financial-with-sign'),
+                        } as TransObjectLiteral
+                      }
+                    </FinancialText>{' '}
+                    since drafted)
+                  </Trans>
+                </span>
+              )}
+            </div>
+          )}
         </td>
 
         <td className="num">
-          <span
+          <FinancialText
+            as="span"
             className={
               diff > 0
                 ? 'diff-positive'
@@ -188,7 +253,7 @@ function PlannerRowItem({
             }
           >
             {currencyFormatter.format(diff)}
-          </span>
+          </FinancialText>
           <span className="progress-bar-wrap">
             <span
               className="progress-bar-fill"
@@ -226,7 +291,7 @@ type Props = {
   rows: PlannerCategoryRow[];
   budgetType: 'envelope' | 'tracking';
   collapsed: boolean;
-  onChangeAmount: (categoryId: string, value: string) => void;
+  onChangeAmount: (categoryId: string, amount: IntegerAmount) => void;
   onCategoryDrop: (sectionKey: string, categoryId: string) => void;
   onCategoryReorder: (sectionKey: string, orderedIds: string[]) => void;
   onSectionReorder: (
@@ -252,6 +317,7 @@ export function PlannerCategorySection({
   onTitleSave,
 }: Props) {
   const { t } = useTranslation();
+  const format = useFormat();
   const [catDragActive, setCatDragActive] = useState(false);
   const [secInsertPos, setSecInsertPos] = useState<'before' | 'after' | null>(
     null,
@@ -262,7 +328,10 @@ export function PlannerCategorySection({
   const [editingTitle, setEditingTitle] = useState(title);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  const sectionTotal = rows.reduce((sum, row) => sum + (row.planned || 0), 0);
+  const sectionTotal = rows.reduce(
+    (sum, row) => sum + (row.plannedAmount || 0),
+    0,
+  );
   const isEmpty = rows.length === 0;
 
   const startEditing = (e: { stopPropagation: () => void }) => {
@@ -407,9 +476,9 @@ export function PlannerCategorySection({
 
         <div className="section-summary">
           {!isEmpty && (
-            <span className="section-total">
-              {currencyFormatter.format(sectionTotal)}
-            </span>
+            <FinancialText as="span" className="section-total">
+              {format(sectionTotal, 'financial')}
+            </FinancialText>
           )}
           <span className="section-count">
             {rows.length}{' '}

@@ -1,15 +1,22 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Trans } from 'react-i18next';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
-import { send } from '@actual-app/core/platform/client/connection';
+import type { PlannedPaycheck } from '@actual-app/core/server/envelopes/planner/types';
 import * as monthUtils from '@actual-app/core/shared/months';
+import type { IntegerAmount } from '@actual-app/core/shared/util';
 
+import { FinancialText } from '#components/FinancialText';
+import { AmountInput } from '#components/util/AmountInput';
 import { useCategories } from '#hooks/useCategories';
+import { useFormat } from '#hooks/useFormat';
 import { SheetNameProvider } from '#hooks/useSheetName';
 import { useSyncedPref } from '#hooks/useSyncedPref';
+import { addNotification } from '#notifications/notificationsSlice';
+import { useDispatch } from '#redux';
 
+import { CommitPaycheckModal } from './CommitPaycheckModal';
 import { PlannerCategorySection } from './PlannerCategorySection';
 import {
   findPlannerSectionKey,
@@ -18,14 +25,16 @@ import {
   PLANNER_SECTIONS,
 } from './plannerConfig';
 import type { PlannerSectionKey } from './plannerConfig';
-import { usePlannerStorage } from './usePlannerStorage';
-import type { StoredPaycheck } from './usePlannerStorage';
+import { useEnvelopeBalances } from './useEnvelopeBalances';
+import {
+  cancelPlannedPaycheck,
+  createPlannedPaycheck,
+  updateDraftAllocation,
+  usePlannedAllocations,
+  usePlannedPaychecks,
+} from './usePlannedPaychecks';
+import { usePlannerLayoutPrefs } from './usePlannerLayoutPrefs';
 import './paycheck-planner.css';
-
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-});
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString('en-US', {
@@ -36,18 +45,24 @@ const formatDate = (value: string) =>
 
 const getMonthFromDate = (value: string) => value.slice(0, 7);
 
-function getPaycheckTotal(paycheck: StoredPaycheck) {
-  return paycheck.scott + paycheck.katie + paycheck.other;
+/**
+ * A paycheck's committed allocations are locked in via `approved_amount`
+ * (set once, at commit time -- CLAUDE.md "Historical lock-in"); a draft
+ * paycheck's current intent is just its live `amount`.
+ */
+function effectiveAllocationAmount(
+  paycheck: Pick<PlannedPaycheck, 'status'>,
+  allocation: { amount: IntegerAmount; approved_amount?: IntegerAmount | null },
+): IntegerAmount {
+  return paycheck.status === 'committed'
+    ? (allocation.approved_amount ?? 0)
+    : allocation.amount;
 }
 
-function getStatusClass(totalIncome: number, budgeted: number) {
+function getStatusClass(totalIncome: IntegerAmount, budgeted: IntegerAmount) {
   if (budgeted <= 0) return 'status-pending';
   if (budgeted >= totalIncome) return 'status-complete';
   return 'status-partial';
-}
-
-function generateId() {
-  return `p-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 type Category = {
@@ -73,54 +88,72 @@ type PlannerCategory = {
   isIncome: boolean;
 };
 
-type EditModalState = {
-  mode: 'add' | 'edit';
-  paycheckId: string | null;
+type AddPaycheckModalState = {
   date: string;
-  scott: string;
-  katie: string;
-  other: string;
+  amount: IntegerAmount;
 };
 
 export function PaycheckPlannerPage() {
+  const { t } = useTranslation();
+  const dispatch = useDispatch();
+  const format = useFormat();
   const [budgetType = 'envelope'] = useSyncedPref('budgetType');
 
   const {
-    paychecks,
-    allocations,
     categoryAssignments,
     categoryOrder,
     sectionTitles,
     sectionOrder,
     collapsedSections,
-    updateAllocation,
-    updateHoldForFuture,
     updateCategoryOrder,
-    addPaycheck,
-    updatePaycheck,
-    deletePaycheck,
     updateCategorySection,
     updateSectionTitle,
     updateSectionOrder,
     toggleSectionCollapsed,
-  } = usePlannerStorage();
+  } = usePlannerLayoutPrefs();
 
-  const [activePaycheckId, setActivePaycheckId] = useState<string>(
-    () => paychecks[0]?.id ?? '',
-  );
-  const [editModal, setEditModal] = useState<EditModalState | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-
+  const { paychecks, isLoading: paychecksLoading } = usePlannedPaychecks();
+  const { byPaycheck: allocationsByPaycheck } = usePlannedAllocations();
+  const { balances } = useEnvelopeBalances();
   const { data } = useCategories();
 
-  const activePaycheck =
-    paychecks.find(p => p.id === activePaycheckId) ?? paychecks[0];
+  const [activePaycheckId, setActivePaycheckId] = useState<string | null>(null);
+  const [addModal, setAddModal] = useState<AddPaycheckModalState | null>(null);
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
+
+  // Keep the active selection valid as the (live) paycheck list loads or
+  // changes -- e.g. after canceling the currently active one.
+  useEffect(() => {
+    if (paychecks.length === 0) return;
+    if (!activePaycheckId || !paychecks.some(p => p.id === activePaycheckId)) {
+      setActivePaycheckId(paychecks[0].id);
+    }
+  }, [paychecks, activePaycheckId]);
+
+  const activePaycheck = paychecks.find(p => p.id === activePaycheckId) ?? null;
+  const isCommitted = activePaycheck?.status === 'committed';
 
   const activeMonth = activePaycheck
-    ? getMonthFromDate(activePaycheck.date)
+    ? getMonthFromDate(activePaycheck.expected_date)
     : getMonthFromDate(new Date().toISOString());
 
-  const paycheckIndex = paychecks.findIndex(p => p.id === activePaycheck?.id);
+  const paycheckIndex = activePaycheck
+    ? paychecks.findIndex(p => p.id === activePaycheck.id)
+    : -1;
+
+  const activeAllocations = useMemo(
+    () =>
+      activePaycheck ? (allocationsByPaycheck[activePaycheck.id] ?? []) : [],
+    [allocationsByPaycheck, activePaycheck],
+  );
+
+  const activeAllocationsByEnvelope = useMemo(() => {
+    const map: Record<string, (typeof activeAllocations)[number]> = {};
+    for (const allocation of activeAllocations) {
+      map[allocation.envelope_id] = allocation;
+    }
+    return map;
+  }, [activeAllocations]);
 
   const plannerData = useMemo(() => {
     const categoryGroups = (data?.grouped ?? []) as CategoryGroup[];
@@ -143,8 +176,6 @@ export function PaycheckPlannerPage() {
           };
         }),
     );
-
-    const incomeCategories = categories.filter(c => c.isIncome);
 
     const defaultSections = PLANNER_SECTIONS.filter(s => s.key !== 'income');
     const allKeys = [...defaultSections.map(s => s.key as string), 'other'];
@@ -181,165 +212,128 @@ export function PaycheckPlannerPage() {
       };
     });
 
-    return { incomeCategories, customSections };
+    return { customSections };
   }, [data, categoryAssignments, categoryOrder, sectionTitles, sectionOrder]);
 
-  // Paychecks sorted by date — used to find the immediately previous paycheck
-  const sortedPaychecks = useMemo(
-    () => [...paychecks].sort((a, b) => a.date.localeCompare(b.date)),
-    [paychecks],
-  );
-
-  // carriedIn: holdForFuture from the paycheck immediately before the active one
-  const carriedIn = useMemo(() => {
-    if (!activePaycheck) return 0;
-    const idx = sortedPaychecks.findIndex(p => p.id === activePaycheck.id);
-    if (idx <= 0) return 0;
-    return sortedPaychecks[idx - 1].holdForFuture ?? 0;
-  }, [sortedPaychecks, activePaycheck]);
-
-  // carriedIn map for every paycheck — used by the nav panel status dots
-  const carriedInMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (let i = 1; i < sortedPaychecks.length; i++) {
-      map[sortedPaychecks[i].id] = sortedPaychecks[i - 1].holdForFuture ?? 0;
+  const envelopeNamesById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const c of data?.list ?? []) {
+      map[c.id] = c.name;
     }
     return map;
-  }, [sortedPaychecks]);
+  }, [data]);
 
-  const budgeted = useMemo(() => {
-    if (!activePaycheck) return 0;
-    return Object.values(allocations[activePaycheck.id] ?? {}).reduce(
-      (sum, v) => sum + (Number(v) || 0),
-      0,
-    );
-  }, [allocations, activePaycheck]);
-
-  // Sum of allocations from all other paychecks in the same month, keyed by category id.
-  const priorAllocations = useMemo(() => {
-    if (!activePaycheck) return {} as Record<string, number>;
-    const result: Record<string, number> = {};
-    for (const p of paychecks) {
-      if (p.id === activePaycheck.id) continue;
-      if (getMonthFromDate(p.date) !== activeMonth) continue;
-      for (const [catId, amount] of Object.entries(allocations[p.id] ?? {})) {
-        result[catId] = (result[catId] ?? 0) + (Number(amount) || 0);
+  // Sum of allocations from every OTHER paycheck in the same month, keyed
+  // by envelope id -- committed paychecks contribute their approved
+  // amount, drafts contribute their current draft amount.
+  const priorAllocationsByEnvelope = useMemo(() => {
+    if (!activePaycheck) return {} as Record<string, IntegerAmount>;
+    const result: Record<string, IntegerAmount> = {};
+    for (const paycheck of paychecks) {
+      if (paycheck.id === activePaycheck.id) continue;
+      if (getMonthFromDate(paycheck.expected_date) !== activeMonth) continue;
+      for (const allocation of allocationsByPaycheck[paycheck.id] ?? []) {
+        result[allocation.envelope_id] =
+          (result[allocation.envelope_id] ?? 0) +
+          effectiveAllocationAmount(paycheck, allocation);
       }
     }
     return result;
-  }, [paychecks, allocations, activePaycheck, activeMonth]);
+  }, [paychecks, allocationsByPaycheck, activePaycheck, activeMonth]);
 
-  const totalIncome = activePaycheck ? getPaycheckTotal(activePaycheck) : 0;
-  const totalAvailable = totalIncome + carriedIn;
-  const holdForFuture = activePaycheck?.holdForFuture ?? 0;
-  const remaining = totalAvailable - budgeted - holdForFuture;
+  const budgetedThisPaycheck = useMemo(() => {
+    if (!activePaycheck) return 0;
+    return activeAllocations.reduce(
+      (sum, a) => sum + effectiveAllocationAmount(activePaycheck, a),
+      0,
+    );
+  }, [activePaycheck, activeAllocations]);
 
-  // Label for the next calendar month, e.g. "June"
-  const nextMonthLabel = useMemo(() => {
-    const next = monthUtils.nextMonth(activeMonth);
-    return new Date(next + '-02').toLocaleDateString('en-US', {
-      month: 'long',
-    });
-  }, [activeMonth]);
+  const totalAvailable = activePaycheck
+    ? isCommitted
+      ? (activePaycheck.actual_amount ?? activePaycheck.expected_amount)
+      : activePaycheck.expected_amount
+    : 0;
+  const remaining = totalAvailable - budgetedThisPaycheck;
+
+  const alreadyMatchedTransactionIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of paychecks) {
+      if (p.id !== activePaycheck?.id && p.actual_transaction_id) {
+        set.add(p.actual_transaction_id);
+      }
+    }
+    return set;
+  }, [paychecks, activePaycheck]);
 
   const handleAllocationChange = useCallback(
-    (categoryId: string, value: string) => {
-      if (!activePaycheck) return;
-      const dollars = Number.isFinite(Number(value)) ? Number(value) : 0;
-      updateAllocation(activePaycheck.id, categoryId, dollars);
-      setHasUnsavedChanges(true);
+    (categoryId: string, amount: IntegerAmount) => {
+      if (!activePaycheck || activePaycheck.status !== 'draft') return;
+      void updateDraftAllocation(activePaycheck.id, categoryId, amount).catch(
+        (err: unknown) => {
+          dispatch(
+            addNotification({
+              notification: {
+                type: 'error',
+                message: t('There was an error saving this allocation.'),
+                pre: err instanceof Error ? err.message : undefined,
+              },
+            }),
+          );
+        },
+      );
     },
-    [activePaycheck, updateAllocation],
+    [activePaycheck, dispatch, t],
   );
-
-  const handleHoldForFutureChange = useCallback(
-    (value: string) => {
-      if (!activePaycheck) return;
-      const dollars = Number.isFinite(Number(value))
-        ? Math.max(0, Number(value))
-        : 0;
-      updateHoldForFuture(activePaycheck.id, dollars);
-      setHasUnsavedChanges(true);
-    },
-    [activePaycheck, updateHoldForFuture],
-  );
-
-  const applyToBudget = useCallback(async () => {
-    if (!activePaycheck) return;
-    const monthPaychecks = paychecks.filter(
-      p => getMonthFromDate(p.date) === activeMonth,
-    );
-    // Collect every category that has any allocation in this month.
-    const categoryIds = new Set<string>(
-      monthPaychecks.flatMap(p => Object.keys(allocations[p.id] ?? {})),
-    );
-    await Promise.all(
-      [...categoryIds].map(categoryId => {
-        const totalDollars = monthPaychecks.reduce(
-          (sum, p) => sum + (allocations[p.id]?.[categoryId] ?? 0),
-          0,
-        );
-        return send('budget/budget-amount', {
-          month: activeMonth,
-          category: categoryId,
-          amount: Math.round(totalDollars * 100),
-        });
-      }),
-    );
-    setHasUnsavedChanges(false);
-  }, [activePaycheck, activeMonth, paychecks, allocations]);
 
   const openAddModal = useCallback(() => {
-    setEditModal({
-      mode: 'add',
-      paycheckId: null,
-      date: new Date().toISOString().slice(0, 10),
-      scott: '0',
-      katie: '0',
-      other: '0',
-    });
+    setAddModal({ date: new Date().toISOString().slice(0, 10), amount: 0 });
   }, []);
 
-  const openEditModal = useCallback(() => {
-    if (!activePaycheck) return;
-    setEditModal({
-      mode: 'edit',
-      paycheckId: activePaycheck.id,
-      date: activePaycheck.date,
-      scott: String(activePaycheck.scott),
-      katie: String(activePaycheck.katie),
-      other: String(activePaycheck.other),
-    });
-  }, [activePaycheck]);
+  const closeAddModal = useCallback(() => setAddModal(null), []);
 
-  const closeModal = useCallback(() => setEditModal(null), []);
-
-  const saveModal = useCallback(() => {
-    if (!editModal) return;
-    const payload = {
-      date: editModal.date,
-      scott: Number(editModal.scott) || 0,
-      katie: Number(editModal.katie) || 0,
-      other: Number(editModal.other) || 0,
-    };
-    if (editModal.mode === 'add') {
-      const newId = generateId();
-      addPaycheck({ id: newId, ...payload });
-      setActivePaycheckId(newId);
-    } else if (editModal.paycheckId) {
-      updatePaycheck({ id: editModal.paycheckId, ...payload });
+  const saveAddModal = useCallback(async () => {
+    if (!addModal || addModal.amount <= 0) return;
+    try {
+      const created = await createPlannedPaycheck(
+        addModal.date,
+        addModal.amount,
+      );
+      setActivePaycheckId(created.id);
+      setAddModal(null);
+    } catch (err) {
+      dispatch(
+        addNotification({
+          notification: {
+            type: 'error',
+            message: t('There was an error creating this paycheck.'),
+            pre: err instanceof Error ? err.message : undefined,
+          },
+        }),
+      );
     }
-    setEditModal(null);
-  }, [editModal, addPaycheck, updatePaycheck]);
+  }, [addModal, dispatch, t]);
 
-  const handleDeletePaycheck = useCallback(() => {
-    if (!activePaycheck || paychecks.length <= 1) return;
-    const nextId =
-      paychecks[paycheckIndex + 1]?.id ?? paychecks[paycheckIndex - 1]?.id;
-    deletePaycheck(activePaycheck.id);
-    if (nextId) setActivePaycheckId(nextId);
-    setEditModal(null);
-  }, [activePaycheck, paychecks, paycheckIndex, deletePaycheck]);
+  const handleCancelPaycheck = useCallback(async () => {
+    if (!activePaycheck || activePaycheck.status !== 'draft') return;
+    const confirmed =
+      typeof window.confirm === 'undefined' ||
+      window.confirm(t('Cancel this planned paycheck? This cannot be undone.'));
+    if (!confirmed) return;
+    try {
+      await cancelPlannedPaycheck(activePaycheck.id);
+    } catch (err) {
+      dispatch(
+        addNotification({
+          notification: {
+            type: 'error',
+            message: t('There was an error canceling this paycheck.'),
+            pre: err instanceof Error ? err.message : undefined,
+          },
+        }),
+      );
+    }
+  }, [activePaycheck, dispatch, t]);
 
   const goToPrevPaycheck = useCallback(() => {
     if (paycheckIndex > 0) setActivePaycheckId(paychecks[paycheckIndex - 1].id);
@@ -355,8 +349,6 @@ export function PaycheckPlannerPage() {
     (targetSectionKey: string, categoryId: string) => {
       if (!categoryId || targetSectionKey === 'income') return;
       updateCategorySection(categoryId, targetSectionKey);
-      // Append to end of target section's order (removes from source implicitly
-      // because the category no longer belongs to that section)
       const currentOrder = categoryOrder[targetSectionKey] ?? [];
       if (!currentOrder.includes(categoryId)) {
         updateCategoryOrder(targetSectionKey, [...currentOrder, categoryId]);
@@ -403,7 +395,7 @@ export function PaycheckPlannerPage() {
     [toggleSectionCollapsed],
   );
 
-  if (paychecks.length === 0) {
+  if (!paychecksLoading && paychecks.length === 0) {
     return (
       <View
         style={{
@@ -431,8 +423,26 @@ export function PaycheckPlannerPage() {
     );
   }
 
+  if (!activePaycheck) {
+    return (
+      <View
+        style={{
+          padding: 24,
+          color: theme.pageTextLight,
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Trans>Loading…</Trans>
+      </View>
+    );
+  }
+
   const resolvedBudgetType =
     budgetType === 'tracking' ? 'tracking' : 'envelope';
+  const matched = activePaycheck.actual_transaction_id != null;
 
   return (
     <View
@@ -469,31 +479,12 @@ export function PaycheckPlannerPage() {
             alignItems: 'center',
           }}
         >
-          {hasUnsavedChanges && (
-            <span
-              style={{
-                fontSize: '0.75rem',
-                color: 'var(--color-warning)',
-                fontWeight: 500,
-              }}
-            >
-              <Trans>Unsaved changes</Trans>
-            </span>
-          )}
           <button
             className="btn btn-secondary btn-sm"
             type="button"
             onClick={openAddModal}
           >
             <Trans>Add Paycheck</Trans>
-          </button>
-          <button
-            className={`btn btn-sm${hasUnsavedChanges ? ' btn-primary' : ' btn-secondary'}`}
-            type="button"
-            onClick={() => void applyToBudget()}
-            disabled={!hasUnsavedChanges}
-          >
-            <Trans>Apply to Budget</Trans>
           </button>
         </div>
       </header>
@@ -506,7 +497,7 @@ export function PaycheckPlannerPage() {
               <Trans>Paycheck Date</Trans>
             </div>
             <div className="income-strip-value">
-              {formatDate(activePaycheck.date)}
+              {formatDate(activePaycheck.expected_date)}
             </div>
           </div>
 
@@ -514,58 +505,15 @@ export function PaycheckPlannerPage() {
 
           <div className="income-strip-item">
             <div className="income-strip-label">
-              <Trans>Scott</Trans>
-            </div>
-            <div className="income-strip-value">
-              {currencyFormatter.format(activePaycheck.scott)}
-            </div>
-          </div>
-
-          <div className="income-strip-item">
-            <div className="income-strip-label">
-              <Trans>Katie</Trans>
-            </div>
-            <div className="income-strip-value">
-              {currencyFormatter.format(activePaycheck.katie)}
-            </div>
-          </div>
-
-          <div className="income-strip-item">
-            <div className="income-strip-label">
-              <Trans>Other</Trans>
-            </div>
-            <div className="income-strip-value">
-              {currencyFormatter.format(activePaycheck.other)}
-            </div>
-          </div>
-
-          <div className="income-divider" />
-
-          {carriedIn > 0 && (
-            <>
-              <div className="income-strip-item">
-                <div className="income-strip-label">
-                  <Trans>Carried In</Trans>
-                </div>
-                <div className="income-strip-value carried-in-value">
-                  +{currencyFormatter.format(carriedIn)}
-                </div>
-              </div>
-              <div className="income-divider" />
-            </>
-          )}
-
-          <div className="income-strip-item">
-            <div className="income-strip-label">
-              {carriedIn > 0 ? (
-                <Trans>Total Available</Trans>
+              {isCommitted ? (
+                <Trans>Actual Deposit</Trans>
               ) : (
-                <Trans>Total Income</Trans>
+                <Trans>Expected Income</Trans>
               )}
             </div>
-            <div className="income-strip-value highlight">
-              {currencyFormatter.format(totalAvailable)}
-            </div>
+            <FinancialText as="div" className="income-strip-value highlight">
+              {format(totalAvailable, 'financial')}
+            </FinancialText>
           </div>
 
           <div className="income-divider" />
@@ -574,32 +522,21 @@ export function PaycheckPlannerPage() {
             <div className="income-strip-label">
               <Trans>Budgeted</Trans>
             </div>
-            <div className="income-strip-value">
-              {currencyFormatter.format(budgeted)}
-            </div>
+            <FinancialText as="div" className="income-strip-value">
+              {format(budgetedThisPaycheck, 'financial')}
+            </FinancialText>
           </div>
-
-          {holdForFuture > 0 && (
-            <div className="income-strip-item">
-              <div className="income-strip-label">
-                <Trans>Hold for </Trans>
-                {nextMonthLabel}
-              </div>
-              <div className="income-strip-value held-value">
-                {currencyFormatter.format(holdForFuture)}
-              </div>
-            </div>
-          )}
 
           <div className="income-strip-item">
             <div className="income-strip-label">
               <Trans>Left to Budget</Trans>
             </div>
-            <div
+            <FinancialText
+              as="div"
               className={`income-strip-value highlight${remaining < 0 ? ' remaining-under' : ''}`}
             >
-              {currencyFormatter.format(remaining)}
-            </div>
+              {format(remaining, 'financial')}
+            </FinancialText>
           </div>
         </div>
 
@@ -621,7 +558,7 @@ export function PaycheckPlannerPage() {
                   className={`paycheck-chip${p.id === activePaycheck.id ? ' active' : ''}`}
                   onClick={() => setActivePaycheckId(p.id)}
                 >
-                  {formatDate(p.date)}
+                  {formatDate(p.expected_date)}
                 </button>
               ))}
             </div>
@@ -635,17 +572,15 @@ export function PaycheckPlannerPage() {
             </button>
           </div>
 
-          <button
-            className="paycheck-status-pill"
-            type="button"
-            onClick={openEditModal}
+          <span
+            className={`paycheck-status-badge ${isCommitted ? 'committed' : 'draft'}`}
           >
-            <Trans>Edit Paycheck</Trans>
-          </button>
+            {isCommitted ? <Trans>Committed</Trans> : <Trans>Draft</Trans>}
+          </span>
 
           <span className="paycheck-status-pill">
             <Trans>Status</Trans>:{' '}
-            {budgeted <= 0 ? (
+            {budgetedThisPaycheck <= 0 ? (
               <Trans>Not started</Trans>
             ) : remaining <= 0 ? (
               <Trans>Fully allocated</Trans>
@@ -657,6 +592,31 @@ export function PaycheckPlannerPage() {
           <span className="paycheck-status-pill">
             <Trans>Month</Trans>: {activeMonth}
           </span>
+
+          {!isCommitted && (
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              onClick={() => setCommitModalOpen(true)}
+            >
+              {matched ? (
+                <Trans>Review &amp; Commit</Trans>
+              ) : (
+                <Trans>Match &amp; Commit</Trans>
+              )}
+            </button>
+          )}
+
+          {!isCommitted && (
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              style={{ color: 'var(--color-error)' }}
+              onClick={() => void handleCancelPaycheck()}
+            >
+              <Trans>Cancel Paycheck</Trans>
+            </button>
+          )}
         </div>
       </div>
 
@@ -680,13 +640,14 @@ export function PaycheckPlannerPage() {
           </div>
           <div className="month-list">
             {paychecks.map(p => {
-              const total = getPaycheckTotal(p);
-              const carried = carriedInMap[p.id] ?? 0;
-              const allocated = Object.values(allocations[p.id] ?? {}).reduce(
-                (sum, v) => sum + (Number(v) || 0),
+              const total =
+                p.status === 'committed'
+                  ? (p.actual_amount ?? p.expected_amount)
+                  : p.expected_amount;
+              const allocated = (allocationsByPaycheck[p.id] ?? []).reduce(
+                (sum, a) => sum + effectiveAllocationAmount(p, a),
                 0,
               );
-              const held = p.holdForFuture ?? 0;
               return (
                 <button
                   key={p.id}
@@ -696,13 +657,15 @@ export function PaycheckPlannerPage() {
                   style={{ textAlign: 'left' }}
                 >
                   <div>
-                    <div className="paycheck-date">{formatDate(p.date)}</div>
-                    <div className="paycheck-amount">
-                      {currencyFormatter.format(total + carried)}
+                    <div className="paycheck-date">
+                      {formatDate(p.expected_date)}
                     </div>
+                    <FinancialText as="div" className="paycheck-amount">
+                      {format(total, 'financial')}
+                    </FinancialText>
                   </div>
                   <span
-                    className={`paycheck-status ${getStatusClass(total + carried, allocated + held)}`}
+                    className={`paycheck-status ${getStatusClass(total, allocated)}`}
                   />
                 </button>
               );
@@ -720,14 +683,24 @@ export function PaycheckPlannerPage() {
                 sectionKey={section.key}
                 budgetType={resolvedBudgetType}
                 collapsed={collapsedSections.includes(section.key as string)}
-                rows={section.categories.map(c => ({
-                  id: c.id,
-                  name: c.name,
-                  groupName: c.groupName,
-                  planned: allocations[activePaycheck.id]?.[c.id] ?? 0,
-                  alreadyBudgeted: priorAllocations[c.id] ?? 0,
-                  isSnowball: isSnowballCategory(c.name),
-                }))}
+                rows={section.categories.map(c => {
+                  const allocation = activeAllocationsByEnvelope[c.id];
+                  return {
+                    id: c.id,
+                    name: c.name,
+                    groupName: c.groupName,
+                    plannedAmount: allocation
+                      ? effectiveAllocationAmount(activePaycheck, allocation)
+                      : 0,
+                    alreadyBudgetedAmount:
+                      priorAllocationsByEnvelope[c.id] ?? 0,
+                    currentBalance: balances[c.id] ?? 0,
+                    balanceAtDraft:
+                      allocation?.envelope_balance_at_draft ?? null,
+                    isSnowball: isSnowballCategory(c.name),
+                    readOnly: isCommitted,
+                  };
+                })}
                 onChangeAmount={handleAllocationChange}
                 onCategoryDrop={handleCategoryDrop}
                 onCategoryReorder={handleCategoryReorder}
@@ -736,60 +709,19 @@ export function PaycheckPlannerPage() {
                 onTitleSave={handleTitleSave}
               />
             ))}
-
-            {/* Hold for Future row — reserves dollars from this paycheck for next month */}
-            <div className="hold-forward-card">
-              <div className="hold-forward-row">
-                <div className="hold-forward-left">
-                  <span className="hold-forward-arrow">→</span>
-                  <div>
-                    <div className="hold-forward-label">
-                      <Trans>Hold for {{ nextMonthLabel }}</Trans>
-                    </div>
-                    <div className="hold-forward-hint">
-                      <Trans>
-                        Reserve dollars for next month — carried into your next
-                        paycheck
-                      </Trans>
-                    </div>
-                  </div>
-                </div>
-                <input
-                  type="number"
-                  className="amount-input hold-forward-input"
-                  min="0"
-                  step="1"
-                  value={holdForFuture || ''}
-                  placeholder="0"
-                  onChange={e => handleHoldForFutureChange(e.target.value)}
-                />
-              </div>
-              {holdForFuture > 0 && (
-                <div className="hold-forward-summary">
-                  <Trans>
-                    {currencyFormatter.format(holdForFuture)} will be available
-                    in your next paycheck
-                  </Trans>
-                </div>
-              )}
-            </div>
           </div>
         </SheetNameProvider>
       </div>
 
-      {/* Add / Edit paycheck modal */}
-      {editModal && (
+      {/* Add paycheck modal */}
+      {addModal && (
         <div className="modal-backdrop open">
           <div className="modal">
             <div className="modal-header">
               <span className="modal-title">
-                {editModal.mode === 'add' ? (
-                  <Trans>Add Paycheck</Trans>
-                ) : (
-                  <Trans>Edit Paycheck</Trans>
-                )}
+                <Trans>Add Paycheck</Trans>
               </span>
-              <button type="button" onClick={closeModal}>
+              <button type="button" onClick={closeAddModal}>
                 ✕
               </button>
             </div>
@@ -797,104 +729,65 @@ export function PaycheckPlannerPage() {
             <div className="modal-body">
               <div className="form-group">
                 <label className="form-label" htmlFor="paycheck-date">
-                  <Trans>Date</Trans>
+                  <Trans>Expected date</Trans>
                 </label>
                 <input
                   id="paycheck-date"
                   className="form-input"
                   type="date"
-                  value={editModal.date}
+                  value={addModal.date}
                   onChange={e =>
-                    setEditModal(
+                    setAddModal(
                       prev => prev && { ...prev, date: e.target.value },
                     )
                   }
                 />
               </div>
               <div className="form-group">
-                <label className="form-label" htmlFor="paycheck-scott">
-                  <Trans>Scott</Trans>
+                <label className="form-label" htmlFor="paycheck-amount">
+                  <Trans>Expected amount</Trans>
                 </label>
-                <input
-                  id="paycheck-scott"
-                  className="form-input"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={editModal.scott}
-                  onChange={e =>
-                    setEditModal(
-                      prev => prev && { ...prev, scott: e.target.value },
-                    )
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="paycheck-katie">
-                  <Trans>Katie</Trans>
-                </label>
-                <input
-                  id="paycheck-katie"
-                  className="form-input"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={editModal.katie}
-                  onChange={e =>
-                    setEditModal(
-                      prev => prev && { ...prev, katie: e.target.value },
-                    )
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="paycheck-other">
-                  <Trans>Other</Trans>
-                </label>
-                <input
-                  id="paycheck-other"
-                  className="form-input"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={editModal.other}
-                  onChange={e =>
-                    setEditModal(
-                      prev => prev && { ...prev, other: e.target.value },
-                    )
+                <AmountInput
+                  id="paycheck-amount"
+                  value={addModal.amount}
+                  sign="+"
+                  onUpdate={amount =>
+                    setAddModal(prev => prev && { ...prev, amount })
                   }
                 />
               </div>
             </div>
 
             <div className="modal-footer">
-              {editModal.mode === 'edit' && paychecks.length > 1 && (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  type="button"
-                  style={{ marginRight: 'auto', color: 'var(--color-error)' }}
-                  onClick={handleDeletePaycheck}
-                >
-                  <Trans>Delete</Trans>
-                </button>
-              )}
               <button
                 className="btn btn-secondary btn-sm"
                 type="button"
-                onClick={closeModal}
+                onClick={closeAddModal}
               >
                 <Trans>Cancel</Trans>
               </button>
               <button
                 className="btn btn-primary btn-sm"
                 type="button"
-                onClick={saveModal}
+                onClick={() => void saveAddModal()}
+                disabled={addModal.amount <= 0}
               >
                 <Trans>Save</Trans>
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Match transaction + review + commit modal */}
+      {commitModalOpen && activePaycheck && (
+        <CommitPaycheckModal
+          paycheck={activePaycheck}
+          allocations={activeAllocations}
+          envelopeNamesById={envelopeNamesById}
+          alreadyMatchedTransactionIds={alreadyMatchedTransactionIds}
+          onClose={() => setCommitModalOpen(false)}
+        />
       )}
     </View>
   );

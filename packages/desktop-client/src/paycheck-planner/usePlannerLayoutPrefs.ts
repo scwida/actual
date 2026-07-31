@@ -2,24 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'paycheck-planner-v1';
 
-export type StoredPaycheck = {
-  id: string;
-  date: string;
-  scott: number;
-  katie: number;
-  other: number;
-  holdForFuture?: number; // dollars held back from this paycheck, carried into the next
-};
-
-export type AllocationMap = Record<string, Record<string, number>>;
 export type CategoryAssignmentMap = Record<string, string>; // categoryId → sectionKey override
 export type SectionTitleMap = Record<string, string>; // sectionKey → custom title
-
 export type CategoryOrderMap = Record<string, string[]>; // sectionKey → ordered categoryId array
 
-type PlannerStorageData = {
-  paychecks: StoredPaycheck[];
-  allocations: AllocationMap;
+type PlannerLayoutPrefs = {
   categoryAssignments: CategoryAssignmentMap;
   categoryOrder: CategoryOrderMap;
   sectionTitles: SectionTitleMap;
@@ -27,25 +14,12 @@ type PlannerStorageData = {
   collapsedSections: string[]; // section keys that are collapsed
 };
 
-function currentMonthPrefix() {
-  return new Date().toISOString().slice(0, 7);
-}
-
-function defaultPaychecks(): StoredPaycheck[] {
-  const month = currentMonthPrefix();
-  return [
-    { id: `${month}-p1`, date: `${month}-01`, scott: 0, katie: 0, other: 0 },
-  ];
-}
-
-function loadFromStorage(): PlannerStorageData {
+function loadFromStorage(): PlannerLayoutPrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<PlannerStorageData>;
+      const parsed = JSON.parse(raw) as Partial<PlannerLayoutPrefs>;
       return {
-        paychecks: parsed.paychecks ?? defaultPaychecks(),
-        allocations: parsed.allocations ?? {},
         categoryAssignments: parsed.categoryAssignments ?? {},
         categoryOrder: parsed.categoryOrder ?? {},
         sectionTitles: parsed.sectionTitles ?? {},
@@ -57,8 +31,6 @@ function loadFromStorage(): PlannerStorageData {
     // ignore corrupt storage
   }
   return {
-    paychecks: defaultPaychecks(),
-    allocations: {},
     categoryAssignments: {},
     categoryOrder: {},
     sectionTitles: {},
@@ -67,7 +39,7 @@ function loadFromStorage(): PlannerStorageData {
   };
 }
 
-function saveToStorage(data: PlannerStorageData) {
+function saveToStorage(data: PlannerLayoutPrefs) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch {
@@ -75,65 +47,24 @@ function saveToStorage(data: PlannerStorageData) {
   }
 }
 
-export function usePlannerStorage() {
-  const [data, setData] = useState<PlannerStorageData>(loadFromStorage);
+/**
+ * Cosmetic, per-device UI layout preferences for the Paycheck Planner --
+ * which section a category is displayed under in this UI, category/section
+ * display order, custom section titles, and collapsed state.
+ *
+ * This is intentionally NOT financial data and intentionally stays in
+ * localStorage rather than the real envelope-engine backend
+ * (`packages/loot-core/src/server/envelopes/`) -- see the scoping decision
+ * in the feature-builder task that introduced this split. Planned
+ * paychecks and their draft allocations (the actual financial facts) live
+ * in `usePlannedPaychecks.ts` instead, backed by the real engine.
+ */
+export function usePlannerLayoutPrefs() {
+  const [data, setData] = useState<PlannerLayoutPrefs>(loadFromStorage);
 
   useEffect(() => {
     saveToStorage(data);
   }, [data]);
-
-  const updateAllocation = useCallback(
-    (paycheckId: string, categoryId: string, dollars: number) => {
-      setData(prev => ({
-        ...prev,
-        allocations: {
-          ...prev.allocations,
-          [paycheckId]: {
-            ...(prev.allocations[paycheckId] ?? {}),
-            [categoryId]: dollars,
-          },
-        },
-      }));
-    },
-    [],
-  );
-
-  const addPaycheck = useCallback((paycheck: StoredPaycheck) => {
-    setData(prev => ({
-      ...prev,
-      paychecks: [...prev.paychecks, paycheck],
-    }));
-  }, []);
-
-  const updatePaycheck = useCallback((updated: StoredPaycheck) => {
-    setData(prev => ({
-      ...prev,
-      paychecks: prev.paychecks.map(p => (p.id === updated.id ? updated : p)),
-    }));
-  }, []);
-
-  const updateHoldForFuture = useCallback(
-    (paycheckId: string, amount: number) => {
-      setData(prev => ({
-        ...prev,
-        paychecks: prev.paychecks.map(p =>
-          p.id === paycheckId ? { ...p, holdForFuture: amount } : p,
-        ),
-      }));
-    },
-    [],
-  );
-
-  const deletePaycheck = useCallback((id: string) => {
-    setData(prev => {
-      const { [id]: _removed, ...remainingAllocations } = prev.allocations;
-      return {
-        ...prev,
-        paychecks: prev.paychecks.filter(p => p.id !== id),
-        allocations: remainingAllocations,
-      };
-    });
-  }, []);
 
   const updateCategoryOrder = useCallback(
     (sectionKey: string, orderedIds: string[]) => {
@@ -185,18 +116,11 @@ export function usePlannerStorage() {
   }, []);
 
   return {
-    paychecks: data.paychecks,
-    allocations: data.allocations,
     categoryAssignments: data.categoryAssignments,
     categoryOrder: data.categoryOrder,
     sectionTitles: data.sectionTitles,
     sectionOrder: data.sectionOrder,
     collapsedSections: data.collapsedSections,
-    updateAllocation,
-    addPaycheck,
-    updatePaycheck,
-    deletePaycheck,
-    updateHoldForFuture,
     updateCategoryOrder,
     updateCategorySection,
     updateSectionTitle,
