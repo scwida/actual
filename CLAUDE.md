@@ -42,12 +42,30 @@ The app should behave like real physical envelopes, not like a spreadsheet. An e
 - **Goals with dates.** An envelope can have a target balance and target date; the app computes a suggested per-paycheck/weekly/monthly contribution to hit it (generalizes the old "Smart Suggestions" concept beyond just paychecks).
 - **Envelopes are personal.** The app assists and suggests, it never prescribes. Two families' envelope setups can look completely different — the system should never assume there's one "correct" way to categorize or prioritize.
 
+### Tracking Mode is retired
+
+Stock Actual's "tracking budget" mode — a report-only philosophy where budgeting is advisory rather than authoritative — has no coherent meaning once envelopes hold real, stored balances: there is one system, not a togglable pair, and the `zero`/`tracking` budget-type dichotomy goes away entirely. This is a distinct concept from **off-budget ("tracked") accounts**, which are *kept*: they remain the correct mechanism for non-liquid assets (investments, property, retirement) — visible for net worth and reporting, but never run through the envelope ledger. When money exits an off-budget account into a liquid one, that's treated as a normal real inflow like any other deposit, funded into an envelope the usual way.
+
+### The budget table's allocation cell
+
+The per-envelope amount cell in the budget grid is a **quick-fund action**, not a target-setting field: typing an amount there transfers that amount from Unallocated into the envelope, reusing the existing envelope-to-envelope transfer primitive — it is not where goals get configured. Goal configuration (see below) happens in a separate envelope detail/settings view. This mirrors the YNAB pattern: the grid is for fast money movement, settings are for goal setup.
+
+### Envelope goal types
+
+Envelopes support two distinct, mutually exclusive goal types, chosen per-envelope based on what that envelope actually needs — not one-size-fits-all. An envelope may have one, the other, or neither; never both at once in the initial design.
+
+1. **Recurring target** — an ongoing amount with no end date (e.g. "$85/month for Internet"). Powers a **months-covered indicator**: current balance ÷ recurring target = how many future months this envelope can already handle. This is purely computed/informational, never an action that moves or resets money — an envelope with leftover funds from a covered month automatically continues covering into the next, with no explicit "carryover" step required, since the balance simply persists (it's real money).
+2. **Dated goal** — a target balance by a target date (e.g. "$3,000 by December" for a vacation), with a suggested per-period contribution, as already specified above under "Envelope rules."
+
+**Historical spending informs recurring-goal suggestions.** When a user sets up a recurring goal for an envelope, the app should suggest an amount based on that envelope's historical spending average (e.g. "you've historically spent ~$85/mo here") — a smart default, not a hard rule, per this file's "assists, never prescribes" principle.
+
 ### The Planner, precisely
 
 - A **planned paycheck** (or any planned income) is a forecast: expected date, expected amount, and draft allocations to envelopes. Creating or editing a plan touches **zero** real envelope balances.
 - **Committing** a plan is the real event: verify the actual deposit against the ledger, then the draft allocations become real envelope deposits and balances actually move.
 - **Live drift indicators.** While a plan is still in draft state, the planner shows each planned allocation next to the envelope's _current real balance_, live — not just at commit time. If other activity (an overspend/borrow, another paycheck committing) has changed that envelope since the allocation was drafted, the row reflects it immediately. The goal is to keep plans realistic, not aspirational — the user should never be "living in a dream world" relative to their real envelopes.
 - Plans further in the future can have stale assumptions once an earlier plan commits differently than expected. Surface this lazily (a badge on the affected future plan), not as a running alert.
+- **Coverage framing, not just dollar amounts.** For envelopes with a recurring goal, the Planner should be able to surface allocation suggestions in terms of the months-covered horizon (e.g. "Groceries is covered through October") rather than only a flat suggested dollar figure — closer to how a budgeter actually thinks about whether they're caught up, especially when trying to get ahead.
 
 ### Sync & audit trail
 
@@ -486,6 +504,7 @@ Build these only when I ask:
 7. **Bank import improvements** — friendlier than stock Actual Budget
 8. **Bill reminders / alerts**
 9. **Flexible planned income entries** — a planned paycheck (or any planned income) should have a free-text payee/source field (e.g. "Katie's paycheck", "Freelance client X") instead of fixed named income fields, plus an optional recurrence setting similar to a scheduled transaction (weekly/biweekly/monthly/custom) so a planned paycheck can auto-generate its next draft rather than being re-entered by hand each time.
+10. **Spending-trends/history report** — a standalone "where has my money been going" report, reusing the same per-envelope historical-spending data that powers the recurring-goal suggestion in "Envelope goal types" above, but as its own feature, not built as part of that work.
 
 ---
 
@@ -529,3 +548,8 @@ task quietly touching the budget engine's data model.
 Typical flow for a new feature: `ux-designer` defines the flow → `engine-architect`
 builds any needed data-model support → `feature-builder` wires the UI →
 `qa-reviewer` verifies before commit.
+
+**Note on the old budget-target actions, for whoever eventually picks up the deferred old-model UI work flagged elsewhere in this file:** not all of them carry forward equally.
+
+- **Hold-for-next-month and set-carryover are structurally obsolete, not just deferred** — remove outright, don't repurpose. There is no "month" for a real balance to be held out of or carried into anymore; it just persists.
+- **Transfer-available and cover-overspending/cover-overbudgeted are NOT new design work.** They map directly onto existing engine primitives — funding from Unallocated, and the already-built `checkNegativeBalance` cover-suggestion — and only need UI hookup whenever that work is picked up, not a fresh design pass.
