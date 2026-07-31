@@ -313,7 +313,11 @@ export async function getCategories(
   ids?: Array<DbCategory['id']>,
 ): Promise<DbCategory[]> {
   const whereIn = ids ? `c.id IN (${toSqlQueryParameters(ids)}) AND` : '';
-  const query = `SELECT c.* FROM categories c WHERE ${whereIn} c.tombstone = 0 ORDER BY c.sort_order, c.id`;
+  // Envelope engine: reserved envelopes (e.g. the "Unallocated" envelope)
+  // are real categories rows, but they are system-owned and not meant to
+  // show up in the old budget engine's category management UI/API --
+  // exclude them here, the same way tombstoned rows are excluded.
+  const query = `SELECT c.* FROM categories c WHERE ${whereIn} c.tombstone = 0 AND c.is_reserved = 0 ORDER BY c.sort_order, c.id`;
   return ids
     ? await all<DbCategory>(query, [...ids])
     : await all<DbCategory>(query);
@@ -331,13 +335,15 @@ export async function getCategoriesGrouped(
   const categoryGroupWhereIn = ids
     ? `cg.id IN (${toSqlQueryParameters(ids)}) AND`
     : '';
-  const categoryGroupQuery = `SELECT cg.* FROM category_groups cg WHERE ${categoryGroupWhereIn} cg.tombstone = 0
+  // See getCategories() -- reserved groups/categories are excluded from
+  // this old-engine-facing enumeration on purpose.
+  const categoryGroupQuery = `SELECT cg.* FROM category_groups cg WHERE ${categoryGroupWhereIn} cg.tombstone = 0 AND cg.is_reserved = 0
                               ORDER BY cg.is_income, cg.sort_order, cg.id`;
 
   const categoryWhereIn = ids
     ? `c.cat_group IN (${toSqlQueryParameters(ids)}) AND`
     : '';
-  const categoryQuery = `SELECT c.* FROM categories c WHERE ${categoryWhereIn} c.tombstone = 0
+  const categoryQuery = `SELECT c.* FROM categories c WHERE ${categoryWhereIn} c.tombstone = 0 AND c.is_reserved = 0
                          ORDER BY c.sort_order, c.id`;
 
   const groups = ids

@@ -9,4 +9,7 @@ export type CategoryGroupEntity = {
   hidden?: boolean;
   budget_exempt?: boolean;
   categories?: CategoryEntity[];
+  // Envelope engine: true for the system group that holds reserved
+  // envelopes (e.g. Unallocated).
+  is_reserved?: boolean;
 };

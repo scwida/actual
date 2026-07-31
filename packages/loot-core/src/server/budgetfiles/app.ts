@@ -12,6 +12,8 @@ import * as budget from '#server/budget/base';
 import * as cloudStorage from '#server/cloud-storage';
 import * as db from '#server/db';
 import * as mappings from '#server/db/mappings';
+import { recomputeEnvelopeBalances } from '#server/envelopes/balances';
+import { initEnvelopeSyncHooks } from '#server/envelopes/sync-hooks';
 import { handleBudgetImport } from '#server/importers';
 import type { ImportableBudgetType } from '#server/importers';
 import { app as mainApp } from '#server/main-app';
@@ -611,6 +613,13 @@ async function _loadBudget(id: Budget['id']): Promise<{
   await rules.loadRules();
   syncMigrations.listen();
   mainApp.startServices();
+
+  // Envelope engine: keep envelope_balances (a cache) in sync with
+  // envelope_ledger (the source of truth) as sync batches come in, and
+  // do one full repair pass now in case anything drifted while this
+  // device was offline.
+  initEnvelopeSyncHooks();
+  await recomputeEnvelopeBalances();
 
   clearUndo();
 

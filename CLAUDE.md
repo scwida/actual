@@ -46,7 +46,7 @@ The app should behave like real physical envelopes, not like a spreadsheet. An e
 
 - A **planned paycheck** (or any planned income) is a forecast: expected date, expected amount, and draft allocations to envelopes. Creating or editing a plan touches **zero** real envelope balances.
 - **Committing** a plan is the real event: verify the actual deposit against the ledger, then the draft allocations become real envelope deposits and balances actually move.
-- **Live drift indicators.** While a plan is still in draft state, the planner shows each planned allocation next to the envelope's *current real balance*, live — not just at commit time. If other activity (an overspend/borrow, another paycheck committing) has changed that envelope since the allocation was drafted, the row reflects it immediately. The goal is to keep plans realistic, not aspirational — the user should never be "living in a dream world" relative to their real envelopes.
+- **Live drift indicators.** While a plan is still in draft state, the planner shows each planned allocation next to the envelope's _current real balance_, live — not just at commit time. If other activity (an overspend/borrow, another paycheck committing) has changed that envelope since the allocation was drafted, the row reflects it immediately. The goal is to keep plans realistic, not aspirational — the user should never be "living in a dream world" relative to their real envelopes.
 - Plans further in the future can have stale assumptions once an earlier plan commits differently than expected. Surface this lazily (a badge on the affected future plan), not as a running alert.
 
 ### Sync & audit trail
@@ -66,6 +66,14 @@ Two different situations both involve populating envelopes with starting data, a
 - **Import** (bringing in a file from another budgeting tool — stock Actual Budget, a YNAB export, etc.). Policy: **preserve intent where possible.** An import should attempt to carry over goals (target balance/date) and envelope structure from the source data, since that reflects real setup the user already did elsewhere. Import must **not** default to the cutover's zero-balance fresh-start policy — that policy is specific to this app's own old-model-to-new-model migration, not to bringing in outside data.
 
 Import itself is out of scope for the current engine rewrite (not being implemented now) — this note exists so the distinction isn't lost or conflated when that work is eventually scoped.
+
+### Known Limitations — engine implementation status (2026-07-31)
+
+The real-balance envelope engine (`packages/loot-core/src/server/envelopes/`) is implemented and passed four rounds of implement → adversarial QA → fix. The hard ledger-ceiling invariant (sum of envelope balances ≤ total real ledger balance) is enforced against real `transactions`/`accounts` data, not just assumed by convention, and is protected against split-transaction double-counting, concurrent fund double-claims, and envelope-balance cache lost-updates *within a single device/process*.
+
+**Not yet solved: true cross-device double-claims.** Two different devices (e.g. Scott's and Katie's, each running their own local sync-server client and DB) can each independently fund an envelope against the *same* real transaction before either syncs — each device performs its own validation locally, correctly, in isolation, and only after both sync would the double-claim become visible. Nothing in the current engine detects or resolves this after the fact; `recomputeEnvelopeBalances` rebuilds the cache from the ledger correctly, but the ledger itself would already contain two conflicting claims against one real dollar amount.
+
+This is a direct gap against this section's own "Sync & audit trail" requirement — real-time updates "so two people acting concurrently... see each other's changes" — for this one specific scenario (concurrent funding against the same transaction). It is an **open product/design question, not an implementation detail**: does post-sync reconciliation flag the second claim for a human to resolve? Auto-clamp one of them? Something else? This needs explicit product direction before the app can be trusted for genuinely concurrent multi-device funding, and should not be treated as solved just because the single-device engine is solid.
 
 ---
 
@@ -510,12 +518,12 @@ sessions. Invoke by name rather than doing cross-domain work in a single
 generic session — each has explicit scope boundaries to prevent, e.g., a UI
 task quietly touching the budget engine's data model.
 
-| Agent | Domain | Use for |
-|---|---|---|
-| `engine-architect` | `packages/loot-core/` — data model, budget/envelope calculation engine, migrations | Designing or implementing the real-balance envelope engine rewrite, category/account schema, plan-vs-commit data model |
-| `feature-builder` | `packages/desktop-client/`, `packages/component-library/` | Building/wiring UI features, the Paycheck Planner UI, applying the frosted-glass design system |
-| `ux-designer` | Flow/interaction design only — no code, no styling | Deciding how a feature should behave before it's built; reviewing whether a flow matches the envelope philosophy; flagging where the Claude Design mockup's interactions conflict with the current direction |
-| `qa-reviewer` | Verification — typecheck, lint, tests, CLAUDE.md checklist | Run after any non-trivial change from engine-architect or feature-builder, before considering it done |
+| Agent              | Domain                                                                             | Use for                                                                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `engine-architect` | `packages/loot-core/` — data model, budget/envelope calculation engine, migrations | Designing or implementing the real-balance envelope engine rewrite, category/account schema, plan-vs-commit data model                                                                                       |
+| `feature-builder`  | `packages/desktop-client/`, `packages/component-library/`                          | Building/wiring UI features, the Paycheck Planner UI, applying the frosted-glass design system                                                                                                               |
+| `ux-designer`      | Flow/interaction design only — no code, no styling                                 | Deciding how a feature should behave before it's built; reviewing whether a flow matches the envelope philosophy; flagging where the Claude Design mockup's interactions conflict with the current direction |
+| `qa-reviewer`      | Verification — typecheck, lint, tests, CLAUDE.md checklist                         | Run after any non-trivial change from engine-architect or feature-builder, before considering it done                                                                                                        |
 
 Typical flow for a new feature: `ux-designer` defines the flow → `engine-architect`
 builds any needed data-model support → `feature-builder` wires the UI →

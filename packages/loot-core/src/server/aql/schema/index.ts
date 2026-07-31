@@ -88,6 +88,12 @@ export const schema = {
     template_settings: f('json', { default: { source: 'notes' } }),
     sort_order: f('float'),
     tombstone: f('boolean'),
+    is_reserved: f('boolean'),
+    reserved_kind: f('string'),
+    // Virtual: this envelope's current real balance, computed via a LEFT
+    // JOIN onto envelope_balances in the v_categories view. Never written
+    // directly (no default -- see convertForInsert/convertForUpdate).
+    balance: f('integer'),
   },
   category_groups: {
     id: f('id'),
@@ -97,6 +103,7 @@ export const schema = {
     budget_exempt: f('boolean'),
     sort_order: f('float'),
     tombstone: f('boolean'),
+    is_reserved: f('boolean'),
   },
   schedules: {
     id: f('id'),
@@ -208,6 +215,59 @@ export const schema = {
     created_at: f('integer', { required: true }),
     tombstone: f('boolean'),
   },
+
+  // Envelope engine (real-balance envelopes) -------------------------------
+
+  envelope_ledger: {
+    id: f('id'),
+    envelope_id: f('id', { ref: 'categories', required: true }),
+    amount: f('integer', { required: true }),
+    movement_type: f('string', { required: true }),
+    counterparty_kind: f('string'),
+    counterparty_id: f('string'),
+    transfer_id: f('id'),
+    transaction_id: f('id', { ref: 'transactions' }),
+    planned_allocation_id: f('id', { ref: 'planned_allocation' }),
+    reverses_id: f('id'),
+    notes: f('string'),
+    // Plain ISO 'YYYY-MM-DD' string, not the transactions-style integer
+    // date repr -- see envelope_ledger.date in the migration for why.
+    date: f('string', { required: true }),
+    created_at: f('string'),
+  },
+  envelope_balances: {
+    // This is the envelope (category) id.
+    id: f('id', { ref: 'categories' }),
+    balance: f('integer'),
+    updated_at: f('string'),
+  },
+  planned_paycheck: {
+    id: f('id'),
+    status: f('string', { required: true }),
+    // Plain ISO 'YYYY-MM-DD' string -- see envelope_ledger.date.
+    expected_date: f('string', { required: true }),
+    expected_amount: f('integer', { required: true }),
+    created_at: f('string'),
+    actual_transaction_id: f('id', { ref: 'transactions' }),
+    actual_amount: f('integer'),
+    commit_shortfall_amount: f('integer'),
+    commit_suggested_allocations: f('json'),
+    committed_at: f('string'),
+  },
+  planned_allocation: {
+    id: f('id'),
+    planned_paycheck_id: f('id', {
+      ref: 'planned_paycheck',
+      required: true,
+    }),
+    envelope_id: f('id', { ref: 'categories', required: true }),
+    amount: f('integer', { required: true }),
+    envelope_balance_at_draft: f('integer'),
+    drafted_at: f('string'),
+    suggested_amount: f('integer'),
+    approved_amount: f('integer'),
+    tombstone: f('boolean'),
+  },
 };
 
 export const schemaConfig: SchemaConfig = {
@@ -315,8 +375,14 @@ export const schemaConfig: SchemaConfig = {
       },
 
       v_categories: internalFields => {
-        const fields = internalFields({ group: 'cat_group' });
-        return `SELECT ${fields} FROM categories _`;
+        const fields = internalFields({
+          group: 'cat_group',
+          balance: 'IFNULL(__envelope_balances.balance, 0)',
+        });
+        return `
+          SELECT ${fields} FROM categories _
+          LEFT JOIN envelope_balances __envelope_balances ON __envelope_balances.id = _.id
+        `;
       },
     },
 

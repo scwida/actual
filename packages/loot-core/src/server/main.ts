@@ -20,6 +20,7 @@ import { app as dashboardApp } from './dashboard/app';
 import * as db from './db';
 import * as encryption from './encryption';
 import { app as encryptionApp } from './encryption/app';
+import { app as envelopesApp } from './envelopes/app';
 import { app as filtersApp } from './filters/app';
 import { app } from './main-app';
 import { mutator, runHandler } from './mutators';
@@ -145,6 +146,7 @@ app.combine(
   syncApp,
   budgetFilesApp,
   encryptionApp,
+  envelopesApp,
   tagsApp,
 );
 

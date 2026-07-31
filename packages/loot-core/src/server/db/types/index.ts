@@ -43,6 +43,12 @@ export type DbCategory = {
   goal_def?: JsonString | null;
   template_settings?: { source: 'notes' | 'ui' };
   tombstone: 1 | 0;
+  // Envelope engine: marks system-owned, non-deletable rows (e.g. the
+  // reserved "Unallocated" envelope) and identifies which reserved
+  // envelope this is. Optional (defaults to 0/null at the DB level) so
+  // this stays additive for all existing call sites.
+  is_reserved?: 1 | 0;
+  reserved_kind?: 'unallocated' | null;
 };
 
 export type DbCategoryGroup = {
@@ -53,6 +59,10 @@ export type DbCategoryGroup = {
   hidden: 1 | 0;
   budget_exempt: 1 | 0;
   tombstone: 1 | 0;
+  // Envelope engine: marks the system group that holds reserved
+  // envelopes. Optional (defaults to 0 at the DB level) so this stays
+  // additive for all existing call sites.
+  is_reserved?: 1 | 0;
 };
 
 export type DbCategoryMapping = {
@@ -342,5 +352,61 @@ export type DbTag = {
   tag: string;
   color?: string | null;
   description?: string | null;
+  tombstone: 1 | 0;
+};
+
+// Envelope engine (real-balance envelopes) --------------------------------
+
+export type DbEnvelopeMovementType = 'fund' | 'spend' | 'transfer';
+export type DbEnvelopeCounterpartyKind = 'account' | 'envelope';
+
+export type DbEnvelopeLedger = {
+  id: string;
+  envelope_id: DbCategory['id'];
+  amount: number;
+  movement_type: DbEnvelopeMovementType;
+  counterparty_kind?: DbEnvelopeCounterpartyKind | null;
+  counterparty_id?: string | null;
+  transfer_id?: string | null;
+  transaction_id?: string | null;
+  planned_allocation_id?: string | null;
+  reverses_id?: string | null;
+  notes?: string | null;
+  date: string;
+  created_at: string;
+};
+
+export type DbEnvelopeBalance = {
+  // This is the envelope (category) id.
+  id: DbCategory['id'];
+  balance: number;
+  updated_at: string;
+};
+
+export type DbPlannedPaycheckStatus = 'draft' | 'committed' | 'canceled';
+
+export type DbPlannedPaycheck = {
+  id: string;
+  status: DbPlannedPaycheckStatus;
+  expected_date: string;
+  expected_amount: number;
+  created_at: string;
+  actual_transaction_id?: string | null;
+  actual_amount?: number | null;
+  commit_shortfall_amount?: number | null;
+  // JSON-serialized Record<CategoryEntity['id'], IntegerAmount>
+  commit_suggested_allocations?: JsonString | null;
+  committed_at?: string | null;
+};
+
+export type DbPlannedAllocation = {
+  id: string;
+  planned_paycheck_id: DbPlannedPaycheck['id'];
+  envelope_id: DbCategory['id'];
+  amount: number;
+  envelope_balance_at_draft: number;
+  drafted_at: string;
+  suggested_amount?: number | null;
+  approved_amount?: number | null;
   tombstone: 1 | 0;
 };
