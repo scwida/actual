@@ -58,6 +58,15 @@ The app should behave like real physical envelopes, not like a spreadsheet. An e
 
 The current budget engine (`packages/loot-core/src/server/budget/`) computes category "budgeted / spent / leftover" live from formula cells — a classic YNAB-style decoupled model. That is structurally incompatible with "an envelope holds a real, stored balance" and needs a genuine rewrite, not a patch. The ledger, sync, accounts-as-source-of-truth, and much of the UI shell (including the existing transfer/action-handler pattern and the Paycheck Planner UI scaffold at `packages/desktop-client/src/paycheck-planner/`) are compatible or close, and should be preserved and re-plumbed once the new engine exists rather than rebuilt from scratch. This rewrite is accepted as necessary and will be scoped as its own project phase — do not attempt to bolt "real balances" onto the existing spreadsheet engine, as that would create two disagreeing sources of truth.
 
+### Cutover vs. Import — do not conflate these
+
+Two different situations both involve populating envelopes with starting data, and they follow **opposite** policies. Keep them distinct:
+
+- **Cutover** (this codebase's old formula engine → the new real-balance engine, on an existing budget file already using this app). Policy: **fresh start at zero, no inherited history.** Keep only what's structurally necessary for the new engine to function — category/group identity, names, sort order. Discard everything derived from the old engine's leftover/carryover/budgeted-amount formulas outright, even as metadata or a comment field. Old "leftover" values are a product of a model now considered incorrect; carrying them forward in any form risks reintroducing the exact class of bug this rewrite exists to eliminate. Every envelope starts at a real $0 balance with no inherited financial history.
+- **Import** (bringing in a file from another budgeting tool — stock Actual Budget, a YNAB export, etc.). Policy: **preserve intent where possible.** An import should attempt to carry over goals (target balance/date) and envelope structure from the source data, since that reflects real setup the user already did elsewhere. Import must **not** default to the cutover's zero-balance fresh-start policy — that policy is specific to this app's own old-model-to-new-model migration, not to bringing in outside data.
+
+Import itself is out of scope for the current engine rewrite (not being implemented now) — this note exists so the distinction isn't lost or conflated when that work is eventually scoped.
+
 ---
 
 ## 2. How We Work Together
