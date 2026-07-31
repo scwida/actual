@@ -10,7 +10,7 @@ This is a **personal family budgeting app** built on a forked version of [Actual
 
 The app is named **myEnvelopes**. Domain: myenvelopes.app (planned purchase). All UI, docs, and code should use this name — no more `BudgetApp` placeholder.
 
-**Target users:** A family/couple (currently modeled on Scott and Katie) who receive multiple paychecks per month and want to plan each one in advance — zero-based budgeting style.
+**Target users:** A family/couple who receive multiple paychecks per month and want to plan each one in advance — zero-based budgeting style. Scott and Katie are this household's usage of the product, used throughout this doc and in testing/demo data as a concrete running example — they are not, and must never become, part of the product's actual structure. **Standing principle for engine-architect and feature-builder on any work touching who/what a paycheck, income source, or account belongs to: the data model and UI must stay fully generic/configurable, with no hardcoded user names, no fixed number of household members, and no fields like "Scott" / "Katie" baked into a schema, type, or component.** Whoever funds an envelope or plans a paycheck is a free-text/configurable identity, not a fixed pair of named slots.
 
 ---
 
@@ -485,6 +485,7 @@ Build these only when I ask:
 6. **Simpler onboarding** — guided setup wizard for income and categories
 7. **Bank import improvements** — friendlier than stock Actual Budget
 8. **Bill reminders / alerts**
+9. **Flexible planned income entries** — a planned paycheck (or any planned income) should have a free-text payee/source field (e.g. "Katie's paycheck", "Freelance client X") instead of fixed named income fields, plus an optional recurrence setting similar to a scheduled transaction (weekly/biweekly/monthly/custom) so a planned paycheck can auto-generate its next draft rather than being re-entered by hand each time.
 
 ---
 
