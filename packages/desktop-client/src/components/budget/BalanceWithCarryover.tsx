@@ -13,6 +13,7 @@ import { styles } from '@actual-app/components/styles';
 import { theme } from '@actual-app/components/theme';
 import { Tooltip } from '@actual-app/components/tooltip';
 import { View } from '@actual-app/components/view';
+import type { IntegerAmount } from '@actual-app/core/shared/util';
 import type { TransObjectLiteral } from '@actual-app/core/types/util';
 import { css } from '@emotion/css';
 
@@ -91,6 +92,21 @@ type BalanceWithCarryoverProps = Omit<
   goal: Binding<'envelope-budget' | 'tracking-budget', 'goal'>;
   budgeted: Binding<'envelope-budget' | 'tracking-budget', 'budget'>;
   longGoal: Binding<'envelope-budget' | 'tracking-budget', 'long-goal'>;
+  /**
+   * When provided, this real, ledger-backed value (e.g. from
+   * `#hooks/useEnvelopeBalances`) is displayed and used for color-coding
+   * instead of the value read from the `balance` spreadsheet binding above.
+   * `balance` is still required -- it's still used for the cell's sheet
+   * name/type plumbing -- but its *value* is ignored when this is set.
+   *
+   * This is how envelope-mode's category balance display was moved off the
+   * old computed `leftover-{cat}` formula cell and onto the real stored
+   * envelope balance (CLAUDE.md "The Envelopes"), without touching every
+   * other consumer of this shared component (tracking-mode balances,
+   * income `sum-amount`, and the old-model budget-action menus still read
+   * `balance` as before).
+   */
+  realBalanceValue?: IntegerAmount;
   isDisabled?: boolean;
   shouldInlineGoalStatus?: boolean;
   CarryoverIndicator?: ComponentType<CarryoverIndicatorProps>;
@@ -103,6 +119,7 @@ export function BalanceWithCarryover({
   goal,
   budgeted,
   longGoal,
+  realBalanceValue,
   isDisabled,
   shouldInlineGoalStatus,
   CarryoverIndicator: CarryoverIndicatorComponent = CarryoverIndicator,
@@ -244,63 +261,67 @@ export function BalanceWithCarryover({
 
   return (
     <CellValue binding={balance} type="financial" {...props}>
-      {({ type, name, value: balanceValue }) => (
-        <>
-          <Tooltip
-            content={
-              <View style={{ padding: 10 }}>
-                {GoalStatusDisplay(balanceValue, type)}
-              </View>
-            }
-            style={{ ...styles.tooltip, borderRadius: '0px 5px 5px 0px' }}
-            placement="bottom"
-            triggerProps={{
-              delay: 750,
-              isDisabled:
-                !isGoalTemplatesEnabled ||
-                goalValue == null ||
-                isNarrowWidth ||
-                tooltipDisabled,
-            }}
-          >
-            {children ? (
-              children({
-                type,
-                name,
-                value: balanceValue,
-                className: getDefaultClassName(balanceValue),
-              })
-            ) : (
-              <CellValueText
-                type={type}
-                name={name}
-                value={balanceValue}
-                className={getDefaultClassName(balanceValue)}
+      {({ type, name, value: sheetBalanceValue }) => {
+        const balanceValue =
+          realBalanceValue !== undefined ? realBalanceValue : sheetBalanceValue;
+        return (
+          <>
+            <Tooltip
+              content={
+                <View style={{ padding: 10 }}>
+                  {GoalStatusDisplay(balanceValue, type)}
+                </View>
+              }
+              style={{ ...styles.tooltip, borderRadius: '0px 5px 5px 0px' }}
+              placement="bottom"
+              triggerProps={{
+                delay: 750,
+                isDisabled:
+                  !isGoalTemplatesEnabled ||
+                  goalValue == null ||
+                  isNarrowWidth ||
+                  tooltipDisabled,
+              }}
+            >
+              {children ? (
+                children({
+                  type,
+                  name,
+                  value: balanceValue,
+                  className: getDefaultClassName(balanceValue),
+                })
+              ) : (
+                <CellValueText
+                  type={type}
+                  name={name}
+                  value={balanceValue}
+                  className={getDefaultClassName(balanceValue)}
+                />
+              )}
+            </Tooltip>
+
+            {carryoverValue && (
+              <CarryoverIndicatorComponent
+                style={getBalanceAmountStyle(balanceValue)}
               />
             )}
-          </Tooltip>
-
-          {carryoverValue && (
-            <CarryoverIndicatorComponent
-              style={getBalanceAmountStyle(balanceValue)}
-            />
-          )}
-          {shouldInlineGoalStatus &&
-            isGoalTemplatesEnabled &&
-            goalValue !== null && (
-              <>
-                <View
-                  style={{
-                    borderTop: '1px solid ' + theme.tableBorderSeparator,
-                    width: '160px',
-                    margin: '3px 0px',
-                  }}
-                />
-                <View>{GoalStatusDisplay(balanceValue, type)}</View>
-              </>
-            )}
-        </>
-      )}
+            {shouldInlineGoalStatus &&
+              isGoalTemplatesEnabled &&
+              goalValue !== null && (
+                <>
+                  <View
+                    style={{
+                      borderTop: '1px solid ' + theme.tableBorderSeparator,
+                      width: '160px',
+                      margin: '3px 0px',
+                    }}
+                  />
+                  <View>{GoalStatusDisplay(balanceValue, type)}</View>
+                </>
+              )}
+          </>
+        );
+      }}
     </CellValue>
   );
 }

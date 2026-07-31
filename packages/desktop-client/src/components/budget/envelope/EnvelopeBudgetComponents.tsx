@@ -16,11 +16,16 @@ import { View } from '@actual-app/components/view';
 import { css } from '@emotion/css';
 
 import { BalanceWithCarryover } from '#components/budget/BalanceWithCarryover';
-import { makeAmountGrey } from '#components/budget/util';
+import {
+  makeAmountGrey,
+  sumEnvelopeBalances,
+  sumTotalEnvelopeBalance,
+} from '#components/budget/util';
 import { NotesButton } from '#components/NotesButton';
 import { CellValue, CellValueText } from '#components/spreadsheet/CellValue';
 import { Field, Row, SheetCell } from '#components/table';
 import type { SheetCellProps } from '#components/table';
+import { useCategories } from '#hooks/useCategories';
 import { useCategoryScheduleGoalTemplateIndicator } from '#hooks/useCategoryScheduleGoalTemplateIndicator';
 import { useContextMenu } from '#hooks/useContextMenu';
 import { useFormat } from '#hooks/useFormat';
@@ -35,20 +40,21 @@ import type { CategoryGroupMonthProps, CategoryMonthProps } from '..';
 
 import { BalanceMovementMenu } from './BalanceMovementMenu';
 import { BudgetMenu } from './BudgetMenu';
+import { useEnvelopeBudget } from './EnvelopeBudgetContext';
 import { IncomeMenu } from './IncomeMenu';
 
 function useGoalBarData(categoryId: string) {
   const { t } = useTranslation();
   const { goals } = useGoalsContext();
   const goal = goals[categoryId];
+  const { envelopeBalances } = useEnvelopeBudget();
   const budgetedCents =
     (useSheetValue<'envelope-budget', 'budget'>(
       envelopeBudget.catBudgeted(categoryId),
     ) as number) ?? 0;
-  const balanceCents =
-    (useSheetValue<'envelope-budget', 'leftover'>(
-      envelopeBudget.catBalance(categoryId),
-    ) as number) ?? 0;
+  // Real, ledger-backed balance (CLAUDE.md "The Envelopes") instead of the
+  // old computed `leftover-{cat}` spreadsheet cell.
+  const balanceCents = envelopeBalances[categoryId] ?? 0;
   const spentCents =
     (useSheetValue<'envelope-budget', 'sum-amount'>(
       envelopeBudget.catSumAmount(categoryId),
@@ -196,6 +202,16 @@ const cellStyle: CSSProperties = {
 };
 
 export const BudgetTotalsMonth = memo(function BudgetTotalsMonth() {
+  const { envelopeBalances } = useEnvelopeBudget();
+  const { data: { grouped: categoryGroups } = { grouped: [] } } =
+    useCategories();
+  // Real, ledger-backed total (CLAUDE.md "The Envelopes") instead of the
+  // old computed `total-leftover` spreadsheet cell.
+  const totalBalance = sumTotalEnvelopeBalance(
+    categoryGroups,
+    envelopeBalances,
+  );
+
   return (
     <View
       style={{
@@ -250,12 +266,12 @@ export const BudgetTotalsMonth = memo(function BudgetTotalsMonth() {
         >
           <Trans>Available</Trans>
         </Text>
-        <EnvelopeCellValue
-          binding={envelopeBudget.totalBalance}
+        <CellValueText
           type="financial"
-        >
-          {props => <CellValueText {...props} style={cellStyle} />}
-        </EnvelopeCellValue>
+          name="total-envelope-balance"
+          value={totalBalance}
+          style={cellStyle}
+        />
       </View>
     </View>
   );
@@ -281,7 +297,11 @@ export const ExpenseGroupMonth = memo(function ExpenseGroupMonth({
   month: _month,
   group,
 }: CategoryGroupMonthProps) {
-  const { id } = group;
+  const { id, categories } = group;
+  const { envelopeBalances } = useEnvelopeBudget();
+  // Real, ledger-backed group total (CLAUDE.md "The Envelopes") instead of
+  // the old computed `group-leftover-{id}` spreadsheet cell.
+  const groupBalance = sumEnvelopeBalances(categories, envelopeBalances);
 
   return (
     <View
@@ -320,22 +340,24 @@ export const ExpenseGroupMonth = memo(function ExpenseGroupMonth({
           type: 'financial',
         }}
       />
-      <EnvelopeSheetCell
+      <Field
         name="balance"
         width="flex"
-        textAlign="right"
+        truncate={false}
         style={{
-          fontWeight: 600,
+          textAlign: 'right',
           paddingRight: styles.monthRightPadding,
-          ...styles.tnum,
           borderTopWidth: 0,
           borderBottomWidth: 0,
         }}
-        valueProps={{
-          binding: envelopeBudget.groupBalance(id),
-          type: 'financial',
-        }}
-      />
+      >
+        <CellValueText
+          type="financial"
+          name={`group-envelope-balance-${id}`}
+          value={groupBalance}
+          style={{ fontWeight: 600, ...styles.tnum }}
+        />
+      </Field>
     </View>
   );
 });
@@ -377,9 +399,10 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
 
   const navigate = useNavigate();
 
-  const rawBalance =
-    (useEnvelopeSheetValue(envelopeBudget.catBalance(category.id)) as number) ??
-    0;
+  const { envelopeBalances } = useEnvelopeBudget();
+  // Real, ledger-backed balance (CLAUDE.md "The Envelopes") instead of the
+  // old computed `leftover-{cat}` spreadsheet cell.
+  const rawBalance = envelopeBalances[category.id] ?? 0;
   const { hasGoal, pct } = useGoalBarData(category.id);
   const isPartiallyFunded = hasGoal && pct > 0 && pct < 1;
 
@@ -694,6 +717,7 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
               <BalanceWithCarryover
                 carryover={envelopeBudget.catCarryover(category.id)}
                 balance={envelopeBudget.catBalance(category.id)}
+                realBalanceValue={rawBalance}
                 goal={envelopeBudget.catGoal(category.id)}
                 budgeted={envelopeBudget.catBudgeted(category.id)}
                 longGoal={envelopeBudget.catLongGoal(category.id)}

@@ -10,6 +10,7 @@ import type { IntegerAmount } from '@actual-app/core/shared/util';
 import { FinancialText } from '#components/FinancialText';
 import { AmountInput } from '#components/util/AmountInput';
 import { useCategories } from '#hooks/useCategories';
+import { useEnvelopeBalances } from '#hooks/useEnvelopeBalances';
 import { useFormat } from '#hooks/useFormat';
 import { SheetNameProvider } from '#hooks/useSheetName';
 import { useSyncedPref } from '#hooks/useSyncedPref';
@@ -25,7 +26,6 @@ import {
   PLANNER_SECTIONS,
 } from './plannerConfig';
 import type { PlannerSectionKey } from './plannerConfig';
-import { useEnvelopeBalances } from './useEnvelopeBalances';
 import {
   cancelPlannedPaycheck,
   createPlannedPaycheck,

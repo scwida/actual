@@ -8,6 +8,7 @@ import {
   currencyToAmount,
   integerToCurrency,
 } from '@actual-app/core/shared/util';
+import type { IntegerAmount } from '@actual-app/core/shared/util';
 import type { Handlers } from '@actual-app/core/types/handlers';
 import type {
   CategoryEntity,
@@ -17,9 +18,44 @@ import type { SyncedPrefs } from '@actual-app/core/types/prefs';
 import { t } from 'i18next';
 
 import type { DropPosition } from '#components/sort';
+import type { EnvelopeBalanceMap } from '#hooks/useEnvelopeBalances';
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
 
 import { getValidMonthBounds } from './MonthsContext';
+
+/**
+ * Sums the real, ledger-backed balance (`#hooks/useEnvelopeBalances`) of a
+ * set of categories -- used to replicate what the old `group-leftover-*`
+ * spreadsheet cell computed (a plain sum of its categories' balances), but
+ * sourced from the new engine instead of the old formula cell.
+ */
+export function sumEnvelopeBalances(
+  categories: CategoryEntity[] | undefined,
+  balances: EnvelopeBalanceMap,
+): IntegerAmount {
+  return (categories ?? []).reduce(
+    (sum, cat) => sum + (balances[cat.id] ?? 0),
+    0,
+  );
+}
+
+/**
+ * Sums real envelope balances across every group counted in the old
+ * `total-leftover` cell -- every non-income, non-`budget_exempt` group
+ * (see `packages/loot-core/src/server/budget/envelope.ts`'s
+ * `createSummary`).
+ */
+export function sumTotalEnvelopeBalance(
+  groups: CategoryGroupEntity[] | undefined,
+  balances: EnvelopeBalanceMap,
+): IntegerAmount {
+  return (groups ?? [])
+    .filter(group => !group.is_income && !group.budget_exempt)
+    .reduce(
+      (sum, group) => sum + sumEnvelopeBalances(group.categories, balances),
+      0,
+    );
+}
 
 export function addToBeBudgetedGroup(groups: CategoryGroupEntity[]) {
   return [

@@ -42,8 +42,13 @@ type CategoryBalanceRow = Pick<CategoryEntity, 'id' | 'balance'>;
 /**
  * Live map of every envelope's current real balance (`categories.balance`,
  * a virtual field joined from `envelope_balances` -- see
- * `packages/loot-core/src/server/aql/schema/index.ts`). Used for the
- * planner's live drift indicator (CLAUDE.md "Live drift indicators").
+ * `packages/loot-core/src/server/aql/schema/index.ts`).
+ *
+ * Shared by the Paycheck Planner's live drift indicator (CLAUDE.md "Live
+ * drift indicators") and the main budget table / sidebar's envelope-mode
+ * balance display (CLAUDE.md "The Envelopes" -- every envelope holds a
+ * real, stored dollar balance, not a computed budgeted-minus-spent
+ * formula).
  *
  * Deliberately does not use the generic `#hooks/useQuery` live-query hook
  * -- see the `RELEVANT_TABLES` comment above for why a query on

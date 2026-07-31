@@ -21,6 +21,7 @@ import {
   useSaveCategoryMutation,
 } from '#budget';
 import { useCategories } from '#hooks/useCategories';
+import { useEnvelopeBalances } from '#hooks/useEnvelopeBalances';
 import { useGlobalPref } from '#hooks/useGlobalPref';
 import { useLocalPref } from '#hooks/useLocalPref';
 import { useNavigate } from '#hooks/useNavigate';
@@ -55,6 +56,11 @@ export function Budget() {
   const [initialized, setInitialized] = useState(false);
   const { data: { grouped: categoryGroups } = { grouped: [] } } =
     useCategories();
+  // Hoisted once here (rather than per-row) so the whole envelope-mode
+  // table shares a single live-query subscription -- see
+  // `#hooks/useEnvelopeBalances`. Harmless to compute in tracking mode too;
+  // it's simply unused by the tracking-mode components below.
+  const { balances: envelopeBalances } = useEnvelopeBalances();
 
   const init = useEffectEvent(() => {
     async function run() {
@@ -211,6 +217,7 @@ export function Budget() {
         summaryCollapsed={summaryCollapsed}
         onBudgetAction={onBudgetAction}
         onToggleSummaryCollapse={onToggleCollapse}
+        envelopeBalances={envelopeBalances}
       >
         <AutoSizingBudgetTable
           type={budgetType}
@@ -256,7 +263,12 @@ export function Budget() {
         </View>
 
         {/* Right summary panel — envelope budget only */}
-        {budgetType === 'envelope' && <MonthSummaryPanel month={startMonth} />}
+        {budgetType === 'envelope' && (
+          <MonthSummaryPanel
+            month={startMonth}
+            envelopeBalances={envelopeBalances}
+          />
+        )}
       </View>
     </SheetNameProvider>
   );

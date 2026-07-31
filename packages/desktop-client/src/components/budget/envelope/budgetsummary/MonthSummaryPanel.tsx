@@ -7,12 +7,12 @@ import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import * as monthUtils from '@actual-app/core/shared/months';
 
-import {
-  EnvelopeCellValue,
-  useEnvelopeSheetValue,
-} from '#components/budget/envelope/EnvelopeBudgetComponents';
+import { EnvelopeCellValue } from '#components/budget/envelope/EnvelopeBudgetComponents';
+import { sumTotalEnvelopeBalance } from '#components/budget/util';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { CellValueText } from '#components/spreadsheet/CellValue';
+import { useCategories } from '#hooks/useCategories';
+import type { EnvelopeBalanceMap } from '#hooks/useEnvelopeBalances';
 import { useLocale } from '#hooks/useLocale';
 import type { Binding, SheetFields } from '#spreadsheet';
 import { envelopeBudget } from '#spreadsheet/bindings';
@@ -23,6 +23,14 @@ type SummaryRowProps = {
   invert?: boolean;
   labelStyle?: CSSProperties;
   valueStyle?: CSSProperties;
+  /**
+   * When provided, overrides the value read from `binding`'s spreadsheet
+   * cell -- used for the "Available" row, which shows the real,
+   * ledger-backed envelope total (CLAUDE.md "The Envelopes") instead of
+   * the old computed `total-leftover` cell. `binding` is still required
+   * for the cell's sheet name/type plumbing.
+   */
+  valueOverride?: number;
 };
 
 function SummaryRow({
@@ -31,6 +39,7 @@ function SummaryRow({
   invert = false,
   labelStyle,
   valueStyle,
+  valueOverride,
 }: SummaryRowProps) {
   return (
     <View
@@ -53,7 +62,8 @@ function SummaryRow({
       <PrivacyFilter>
         <EnvelopeCellValue binding={binding} type="financial">
           {props => {
-            const v = props.value ?? 0;
+            const v =
+              valueOverride !== undefined ? valueOverride : (props.value ?? 0);
             return (
               <CellValueText
                 {...props}
@@ -88,9 +98,19 @@ function Divider() {
 
 type MonthSummaryPanelProps = {
   month: string;
+  /**
+   * Every envelope's current real, ledger-backed balance -- see
+   * `#hooks/useEnvelopeBalances`. Hoisted once in `Budget()` rather than
+   * fetched here, so this panel shares a single live-query subscription
+   * with the rest of the envelope-mode table.
+   */
+  envelopeBalances: EnvelopeBalanceMap;
 };
 
-export function MonthSummaryPanel({ month }: MonthSummaryPanelProps) {
+export function MonthSummaryPanel({
+  month,
+  envelopeBalances,
+}: MonthSummaryPanelProps) {
   const { t } = useTranslation();
   const locale = useLocale();
 
@@ -101,11 +121,14 @@ export function MonthSummaryPanel({ month }: MonthSummaryPanelProps) {
     locale,
   );
 
-  const totalBalance =
-    (useEnvelopeSheetValue({
-      name: envelopeBudget.totalBalance,
-      value: 0,
-    }) as number) ?? 0;
+  const { data: { grouped: categoryGroups } = { grouped: [] } } =
+    useCategories();
+  // Real, ledger-backed total (CLAUDE.md "The Envelopes") instead of the
+  // old computed `total-leftover` spreadsheet cell.
+  const totalBalance = sumTotalEnvelopeBalance(
+    categoryGroups,
+    envelopeBalances,
+  );
 
   const balanceColor =
     totalBalance > 0
@@ -152,6 +175,7 @@ export function MonthSummaryPanel({ month }: MonthSummaryPanelProps) {
       <SummaryRow
         label={t('Available')}
         binding={envelopeBudget.totalBalance}
+        valueOverride={totalBalance}
         valueStyle={{ color: balanceColor, fontSize: 14, fontWeight: 700 }}
         labelStyle={{ fontWeight: 600, color: theme.pageText }}
       />

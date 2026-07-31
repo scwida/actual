@@ -3,11 +3,22 @@ import type { ReactNode } from 'react';
 
 import * as monthUtils from '@actual-app/core/shared/months';
 
+import type { EnvelopeBalanceMap } from '#hooks/useEnvelopeBalances';
+
 type EnvelopeBudgetContextDefinition = {
   summaryCollapsed: boolean;
   onBudgetAction: (month: string, action: string, arg?: unknown) => void;
   onToggleSummaryCollapse: () => void;
   currentMonth: string;
+  /**
+   * Every envelope's current real, ledger-backed balance
+   * (`categories.balance` -- see `#hooks/useEnvelopeBalances`), hoisted
+   * once here so category/group/total rows don't each mount their own
+   * live-query subscription. Used for the envelope-mode balance display
+   * (CLAUDE.md "The Envelopes") instead of the old computed
+   * `leftover-{cat}` spreadsheet cell.
+   */
+  envelopeBalances: EnvelopeBalanceMap;
 };
 
 const EnvelopeBudgetContext = createContext<EnvelopeBudgetContextDefinition>({
@@ -21,6 +32,7 @@ const EnvelopeBudgetContext = createContext<EnvelopeBudgetContextDefinition>({
     );
   },
   currentMonth: 'unknown',
+  envelopeBalances: {},
 });
 
 type EnvelopeBudgetProviderProps = Omit<
@@ -33,6 +45,7 @@ export function EnvelopeBudgetProvider({
   summaryCollapsed,
   onBudgetAction,
   onToggleSummaryCollapse,
+  envelopeBalances,
   children,
 }: EnvelopeBudgetProviderProps) {
   const currentMonth = monthUtils.currentMonth();
@@ -44,6 +57,7 @@ export function EnvelopeBudgetProvider({
         summaryCollapsed,
         onBudgetAction,
         onToggleSummaryCollapse,
+        envelopeBalances,
       }}
     >
       {children}
