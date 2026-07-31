@@ -3,6 +3,7 @@
 import * as connection from '#platform/server/connection';
 import * as db from '#server/db';
 import { incrFetch, whereIn } from '#server/db/util';
+import { reconcileEnvelopeMovements } from '#server/envelopes/transaction-hooks';
 import { batchMessages } from '#server/sync';
 import type { Diff } from '#shared/util';
 import type { PayeeEntity, TransactionEntity } from '#types/models';
@@ -149,6 +150,22 @@ export async function batchUpdateTransactions({
       await Promise.all(allDeleted.map(t => transfer.onDelete(t)));
     });
   }
+
+  // Re-fetch the now-truly-final state of every touched transaction
+  // before reconciling envelope movements: `transfer.onInsert`/`onUpdate`
+  // above can clear a transaction's `category` directly in the database
+  // (see `transfer.ts`'s `clearCategory`) without mutating the
+  // `allAdded`/`allUpdated` objects in memory, so reusing those stale
+  // arrays here could debit an envelope for what is actually an
+  // account-to-account transfer, not real spending.
+  const finalAdded = await getTransactionsByIds(addedIds);
+  const finalUpdated = await getTransactionsByIds(updatedIds);
+  const finalDeleted = await getTransactionsByIds(deletedIds);
+  await reconcileEnvelopeMovements({
+    added: finalAdded,
+    updated: finalUpdated,
+    deleted: finalDeleted,
+  });
 
   if (learnCategories) {
     // Analyze any updated categories and update rules to learn from
