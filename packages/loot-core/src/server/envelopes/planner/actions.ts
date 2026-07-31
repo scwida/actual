@@ -236,6 +236,56 @@ export async function updateDraftAllocation({
   );
 }
 
+/**
+ * Edits a draft planned paycheck's `expected_date`/`expected_amount`.
+ * Metadata-only, same category as `createPlannedPaycheck` and
+ * `updateDraftAllocation` -- never touches a real envelope balance.
+ *
+ * Deliberately does NOT recompute or touch existing `PlannedAllocation`
+ * rows when `expectedAmount` changes: allocations keep the amounts they
+ * were drafted with regardless of a later edit to the paycheck's expected
+ * amount. `computeSuggestedReduction` (see ./commit) already reconciles
+ * drafted-vs-actual at commit time from whatever the real deposit turns
+ * out to be, so there is nothing here that needs to guess at a
+ * recomputation ahead of that -- doing so would just be a second,
+ * possibly-stale copy of what the review step already does correctly.
+ */
+export async function updateDraftPaycheck({
+  plannedPaycheckId,
+  expectedDate,
+  expectedAmount,
+}: {
+  plannedPaycheckId: PlannedPaycheck['id'];
+  expectedDate?: string;
+  expectedAmount?: IntegerAmount;
+}): Promise<PlannedPaycheck> {
+  const paycheck = getPlannedPaycheckRow(plannedPaycheckId);
+  assertIsDraft(paycheck);
+
+  if (
+    expectedAmount !== undefined &&
+    (!Number.isInteger(expectedAmount) || expectedAmount <= 0)
+  ) {
+    throw new Error(
+      `updateDraftPaycheck: expectedAmount must be a positive integer, got: ${expectedAmount}`,
+    );
+  }
+
+  const updates: { id: PlannedPaycheck['id'] } & Partial<
+    Pick<db.DbPlannedPaycheck, 'expected_date' | 'expected_amount'>
+  > = { id: plannedPaycheckId };
+  if (expectedDate !== undefined) {
+    updates.expected_date = expectedDate;
+  }
+  if (expectedAmount !== undefined) {
+    updates.expected_amount = expectedAmount;
+  }
+
+  await db.updateWithSchema('planned_paycheck', updates);
+
+  return fromDbPaycheck(getPlannedPaycheckRow(plannedPaycheckId));
+}
+
 export async function cancelPaycheck({
   plannedPaycheckId,
 }: {

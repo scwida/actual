@@ -13,9 +13,13 @@ import {
   createPlannedPaycheck,
   matchTransaction,
   updateDraftAllocation,
+  updateDraftPaycheck,
 } from './planner/actions';
-import type { CommitPaycheckResult } from './planner/commit';
-import { commitPaycheck } from './planner/commit';
+import type {
+  CommitPaycheckResult,
+  SuggestedReduction,
+} from './planner/commit';
+import { commitPaycheck, previewCommitPaycheck } from './planner/commit';
 import type { PlannedPaycheck } from './planner/types';
 
 export type EnvelopeHandlers = {
@@ -25,9 +29,11 @@ export type EnvelopeHandlers = {
   'envelope/run-cutover': typeof runCutoverHandler;
   'envelope/planner/create-paycheck': typeof createPlannedPaycheck;
   'envelope/planner/update-draft-allocation': typeof updateDraftAllocation;
+  'envelope/planner/update-draft-paycheck': typeof updateDraftPaycheck;
   'envelope/planner/cancel-paycheck': typeof cancelPaycheck;
   'envelope/planner/match-transaction': typeof matchTransaction;
   'envelope/planner/commit-paycheck': typeof commitPaycheckHandler;
+  'envelope/planner/preview-commit': typeof previewCommitPaycheckHandler;
 };
 
 export const app = createApp<EnvelopeHandlers>();
@@ -48,6 +54,10 @@ app.method(
   mutator(undoable(updateDraftAllocation)),
 );
 app.method(
+  'envelope/planner/update-draft-paycheck',
+  mutator(undoable(updateDraftPaycheck)),
+);
+app.method(
   'envelope/planner/cancel-paycheck',
   mutator(undoable(cancelPaycheck)),
 );
@@ -59,6 +69,7 @@ app.method(
   'envelope/planner/commit-paycheck',
   mutator(undoable(commitPaycheckHandler)),
 );
+app.method('envelope/planner/preview-commit', previewCommitPaycheckHandler);
 
 // Repair handler: envelope_balances is a cache, always rebuildable from
 // envelope_ledger. Exposed explicitly rather than run automatically.
@@ -84,4 +95,16 @@ async function commitPaycheckHandler({
   approvedAmounts: Record<CategoryEntity['id'], IntegerAmount>;
 }): Promise<CommitPaycheckResult> {
   return commitPaycheck(plannedPaycheckId, approvedAmounts);
+}
+
+// Read-only: lets a review screen show the same suggested reduction
+// `commitPaycheck` would use, without writing anything. Thin wrapper
+// around the same pure `computeSuggestedReduction` function `commitPaycheck`
+// calls internally, so preview and commit can never drift apart.
+async function previewCommitPaycheckHandler({
+  plannedPaycheckId,
+}: {
+  plannedPaycheckId: PlannedPaycheck['id'];
+}): Promise<SuggestedReduction> {
+  return previewCommitPaycheck(plannedPaycheckId);
 }

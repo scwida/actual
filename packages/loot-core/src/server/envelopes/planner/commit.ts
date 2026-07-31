@@ -77,6 +77,34 @@ export function computeSuggestedReduction(
   return { shortfallAmount, suggested };
 }
 
+/**
+ * Read-only preview of what `commitPaycheck` would suggest right now, for
+ * a review screen to show before the user actually commits. Reuses the
+ * exact same pure `computeSuggestedReduction` function that `commitPaycheck`
+ * calls internally -- there is only one implementation of this
+ * calculation, so preview and commit can never drift apart. Writes
+ * nothing: no ledger rows, no balance changes, no status transition.
+ *
+ * Deliberately does not require the paycheck to already be matched to a
+ * real transaction (`actual_amount` may still be null) -- like
+ * `computeSuggestedReduction` itself, this falls back to `expected_amount`
+ * so the UI can preview against the plan before a deposit is matched.
+ */
+export async function previewCommitPaycheck(
+  plannedPaycheckId: PlannedPaycheck['id'],
+): Promise<SuggestedReduction> {
+  const paycheckRow = getPlannedPaycheckRow(plannedPaycheckId);
+  const allocations = await getPlannedAllocations(plannedPaycheckId);
+
+  return computeSuggestedReduction(
+    {
+      actual_amount: paycheckRow.actual_amount ?? null,
+      expected_amount: paycheckRow.expected_amount,
+    },
+    allocations,
+  );
+}
+
 function assertCanCommit(paycheck: db.DbPlannedPaycheck): void {
   if (paycheck.status !== 'draft') {
     throw new Error(

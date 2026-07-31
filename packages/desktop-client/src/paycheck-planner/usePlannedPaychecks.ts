@@ -7,7 +7,10 @@ import { send } from '@actual-app/core/platform/client/connection';
 // import from `@actual-app/core/server/undo`). Never import a *value* from
 // these modules on the client -- they pull in server-only platform code
 // (db, sqlite, etc.) that can't run in the browser.
-import type { CommitPaycheckResult } from '@actual-app/core/server/envelopes/planner/commit';
+import type {
+  CommitPaycheckResult,
+  SuggestedReduction,
+} from '@actual-app/core/server/envelopes/planner/commit';
 import type {
   PlannedAllocation,
   PlannedPaycheck,
@@ -122,6 +125,20 @@ export async function matchPaycheckTransaction(
     plannedPaycheckId,
     transactionId,
   });
+}
+
+/**
+ * Read-only preview of what `commitPaycheck` would suggest right now --
+ * shortfall amount and suggested per-envelope amounts -- for the review
+ * screen to show before actually committing. Calls the real server-side
+ * `computeSuggestedReduction` (the exact same function `commitPaycheck`
+ * uses internally), so the review screen and the enforcement path can
+ * never drift apart. Writes nothing.
+ */
+export async function previewCommitPaycheck(
+  plannedPaycheckId: PlannedPaycheck['id'],
+): Promise<SuggestedReduction> {
+  return send('envelope/planner/preview-commit', { plannedPaycheckId });
 }
 
 /**

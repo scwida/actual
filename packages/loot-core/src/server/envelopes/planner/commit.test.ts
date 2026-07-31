@@ -11,7 +11,11 @@ import {
   matchTransaction,
   updateDraftAllocation,
 } from './actions';
-import { commitPaycheck, computeSuggestedReduction } from './commit';
+import {
+  commitPaycheck,
+  computeSuggestedReduction,
+  previewCommitPaycheck,
+} from './commit';
 
 describe('commitPaycheck', () => {
   beforeEach(global.emptyDatabase());
@@ -253,6 +257,68 @@ describe('commitPaycheck', () => {
     expect(result.leftoverToUnallocated).toBe(700);
     expect(getEnvelopeBalance('envA')).toBe(500);
     expect(getEnvelopeBalance(getUnallocatedEnvelopeId())).toBe(700);
+  });
+
+  it('previewCommitPaycheck matches exactly what commitPaycheck would use, and makes zero writes', async () => {
+    await setupEnvelopes();
+
+    const paycheck = await createPlannedPaycheck({
+      expectedDate: '2026-02-06',
+      expectedAmount: 1000,
+    });
+    await updateDraftAllocation({
+      plannedPaycheckId: paycheck.id,
+      envelopeId: 'envA',
+      amount: 600,
+    });
+    global.stepForwardInTime();
+    await updateDraftAllocation({
+      plannedPaycheckId: paycheck.id,
+      envelopeId: 'envB',
+      amount: 400,
+    });
+    // Actual deposit came in $200 short, same as the shortfall scenario
+    // above -- this exercises the non-trivial reduction path, not just
+    // the happy-path pass-through.
+    await insertRealDeposit({ id: 'txn1', amount: 800 });
+    await matchTransaction({
+      plannedPaycheckId: paycheck.id,
+      transactionId: 'txn1',
+    });
+
+    const paycheckRowBefore = getPlannedPaycheckRow(paycheck.id);
+    const allocationsBefore = await getPlannedAllocations(paycheck.id);
+    const ledgerRowsBefore = await db.all(
+      'SELECT COUNT(*) as count FROM envelope_ledger',
+    );
+    const envABalanceBefore = getEnvelopeBalance('envA');
+    const envBBalanceBefore = getEnvelopeBalance('envB');
+
+    // This is exactly what commitPaycheck computes internally.
+    const expected = computeSuggestedReduction(
+      {
+        actual_amount: paycheckRowBefore.actual_amount,
+        expected_amount: paycheckRowBefore.expected_amount,
+      },
+      allocationsBefore,
+    );
+
+    const preview = await previewCommitPaycheck(paycheck.id);
+
+    expect(preview).toEqual(expected);
+    expect(preview.shortfallAmount).toBe(200);
+    expect(preview.suggested).toEqual({ envA: 600, envB: 200 });
+
+    // Nothing was written: paycheck row, allocations, ledger, and
+    // balances are all untouched.
+    expect(getPlannedPaycheckRow(paycheck.id)).toEqual(paycheckRowBefore);
+    expect(await getPlannedAllocations(paycheck.id)).toEqual(allocationsBefore);
+    expect(
+      await db.all('SELECT COUNT(*) as count FROM envelope_ledger'),
+    ).toEqual(ledgerRowsBefore);
+    expect(getEnvelopeBalance('envA')).toBe(envABalanceBefore);
+    expect(getEnvelopeBalance('envB')).toBe(envBBalanceBefore);
+    expect(getPlannedPaycheckRow(paycheck.id).status).toBe('draft');
   });
 
   describe('matchTransaction / commitPaycheck real-money verification', () => {
