@@ -268,6 +268,18 @@ export const schema = {
     approved_amount: f('integer'),
     tombstone: f('boolean'),
   },
+  envelope_goal: {
+    // This is the envelope (category) id -- one goal per envelope.
+    id: f('id', { ref: 'categories' }),
+    goal_type: f('string', { required: true }),
+    target_amount: f('integer', { required: true }),
+    cadence_type: f('string', { required: true }),
+    cadence_custom_days: f('integer'),
+    target_date: f('string'),
+    created_at: f('string'),
+    updated_at: f('string'),
+    tombstone: f('boolean'),
+  },
 };
 
 export const schemaConfig: SchemaConfig = {

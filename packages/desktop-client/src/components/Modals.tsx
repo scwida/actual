@@ -40,6 +40,7 @@ import { EnvelopeBalanceMenuModal } from './modals/EnvelopeBalanceMenuModal';
 import { EnvelopeBudgetMenuModal } from './modals/EnvelopeBudgetMenuModal';
 import { EnvelopeBudgetMonthMenuModal } from './modals/EnvelopeBudgetMonthMenuModal';
 import { EnvelopeBudgetSummaryModal } from './modals/EnvelopeBudgetSummaryModal';
+import { EnvelopeGoalModal } from './modals/EnvelopeGoalModal';
 import { EnvelopeIncomeBalanceMenuModal } from './modals/EnvelopeIncomeBalanceMenuModal';
 import { EnvelopeToBudgetMenuModal } from './modals/EnvelopeToBudgetMenuModal';
 import { FixEncryptionKeyModal } from './modals/FixEncryptionKeyModal';
@@ -303,6 +304,9 @@ export function Modals() {
               <EnvelopeBalanceMenuModal {...modal.options} />
             </SheetNameProvider>
           );
+
+        case 'envelope-goal-edit':
+          return <EnvelopeGoalModal key={key} {...modal.options} />;
 
         case 'envelope-income-balance-menu':
           return (

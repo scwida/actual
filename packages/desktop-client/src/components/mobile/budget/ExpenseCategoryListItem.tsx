@@ -361,6 +361,23 @@ export function ExpenseCategoryListItem({
     format,
   ]);
 
+  const onGoal = useCallback(() => {
+    if (!category) {
+      return;
+    }
+    // Nested on top of the balance menu rather than collapsing it first --
+    // same precedent as `category-autocomplete` being pushed on top of
+    // `transfer`/`cover` without collapsing (see those callbacks above).
+    dispatch(
+      pushModal({
+        modal: {
+          name: 'envelope-goal-edit',
+          options: { envelopeId: category.id },
+        },
+      }),
+    );
+  }, [category, dispatch]);
+
   const onOpenBalanceMenu = useCallback(() => {
     if (!category) {
       return;
@@ -376,6 +393,7 @@ export function ExpenseCategoryListItem({
               onCarryover,
               onTransfer,
               onCover,
+              onGoal,
             },
           },
         }),
@@ -402,6 +420,7 @@ export function ExpenseCategoryListItem({
     onCarryover,
     onTransfer,
     onCover,
+    onGoal,
   ]);
 
   const navigate = useNavigate();

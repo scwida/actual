@@ -33,6 +33,7 @@ export function EnvelopeBalanceMenuModal({
   onCarryover,
   onTransfer,
   onCover,
+  onGoal,
 }: EnvelopeBalanceMenuModalProps) {
   const defaultMenuItemStyle: CSSProperties = {
     ...styles.mobileMenuItem,
@@ -107,6 +108,7 @@ export function EnvelopeBalanceMenuModal({
             onCarryover={onCarryover}
             onTransfer={onTransfer}
             onCover={onCover}
+            onGoal={onGoal}
           />
         </>
       )}

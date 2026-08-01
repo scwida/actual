@@ -1,6 +1,8 @@
 import React, { useCallback, useRef, useState } from 'react';
 
 import { useFormat } from '#hooks/useFormat';
+import { pushModal } from '#modals/modalsSlice';
+import { useDispatch } from '#redux';
 import { envelopeBudget } from '#spreadsheet/bindings';
 
 import { BalanceMenu } from './BalanceMenu';
@@ -23,6 +25,7 @@ export function BalanceMovementMenu({
   onClose,
 }: BalanceMovementMenuProps) {
   const format = useFormat();
+  const dispatch = useDispatch();
 
   const catBalance =
     useEnvelopeSheetValue(envelopeBudget.catBalance(categoryId)) ?? 0;
@@ -53,6 +56,17 @@ export function BalanceMovementMenu({
           }}
           onTransfer={() => setMenu('transfer')}
           onCover={() => setMenu('cover')}
+          onGoal={() => {
+            onClose();
+            dispatch(
+              pushModal({
+                modal: {
+                  name: 'envelope-goal-edit',
+                  options: { envelopeId: categoryId },
+                },
+              }),
+            );
+          }}
         />
       )}
 

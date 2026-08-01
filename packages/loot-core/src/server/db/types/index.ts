@@ -410,3 +410,29 @@ export type DbPlannedAllocation = {
   approved_amount?: number | null;
   tombstone: 1 | 0;
 };
+
+export type DbEnvelopeGoalType = 'recurring' | 'dated';
+export type DbEnvelopeCadenceType =
+  | 'weekly'
+  | 'monthly'
+  | 'quarterly'
+  | 'annual'
+  | 'custom';
+
+// One row per envelope (id = the envelope/category id) -- see
+// migrations/1769200500000_create_envelope_goal.sql for why "no goal" has
+// no row here (or a tombstoned one) rather than a literal 'none'
+// `goal_type` value.
+export type DbEnvelopeGoal = {
+  id: DbCategory['id'];
+  goal_type: DbEnvelopeGoalType;
+  target_amount: number;
+  cadence_type: DbEnvelopeCadenceType;
+  // Only set when cadence_type === 'custom'.
+  cadence_custom_days?: number | null;
+  // Only set for a 'dated' goal. Plain ISO 'YYYY-MM-DD' string.
+  target_date?: string | null;
+  created_at: string;
+  updated_at: string;
+  tombstone: 1 | 0;
+};

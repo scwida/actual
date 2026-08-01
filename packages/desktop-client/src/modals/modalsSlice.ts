@@ -421,6 +421,13 @@ export type Modal =
         onCarryover?: (carryover: boolean) => void;
         onTransfer?: () => void;
         onCover?: () => void;
+        onGoal?: () => void;
+      };
+    }
+  | {
+      name: 'envelope-goal-edit';
+      options: {
+        envelopeId: CategoryEntity['id'];
       };
     }
   | {
