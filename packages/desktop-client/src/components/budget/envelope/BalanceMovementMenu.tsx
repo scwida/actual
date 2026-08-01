@@ -5,6 +5,7 @@ import { envelopeBudget } from '#spreadsheet/bindings';
 
 import { BalanceMenu } from './BalanceMenu';
 import { CoverMenu } from './CoverMenu';
+import { CoverSuggestion } from './CoverSuggestion';
 import { useEnvelopeSheetValue } from './EnvelopeBudgetComponents';
 import { TransferMenu } from './TransferMenu';
 
@@ -73,19 +74,33 @@ export function BalanceMovementMenu({
       )}
 
       {menu === 'cover' && (
-        <CoverMenu
-          categoryId={categoryId}
-          initialAmount={catBalance}
-          onClose={onClose}
-          onSubmit={(amount, fromCategoryId) => {
-            onBudgetAction(month, 'cover-overspending', {
-              to: categoryId,
-              from: fromCategoryId,
-              amount,
-              currencyCode: format.currency.code,
-            });
-          }}
-        />
+        <>
+          <CoverSuggestion
+            envelopeId={categoryId}
+            onApply={(source, amount) => {
+              onBudgetAction(month, 'cover-overspending', {
+                to: categoryId,
+                from: source,
+                amount,
+                currencyCode: format.currency.code,
+              });
+              onClose();
+            }}
+          />
+          <CoverMenu
+            categoryId={categoryId}
+            initialAmount={catBalance}
+            onClose={onClose}
+            onSubmit={(amount, fromCategoryId) => {
+              onBudgetAction(month, 'cover-overspending', {
+                to: categoryId,
+                from: fromCategoryId,
+                amount,
+                currencyCode: format.currency.code,
+              });
+            }}
+          />
+        </>
       )}
     </span>
   );

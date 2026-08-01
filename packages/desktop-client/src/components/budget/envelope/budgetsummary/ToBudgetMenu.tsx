@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Menu } from '@actual-app/components/menu';
 
 import { useEnvelopeSheetValue } from '#components/budget/envelope/EnvelopeBudgetComponents';
+import { useUnallocatedEnvelope } from '#hooks/useUnallocatedEnvelope';
 import { envelopeBudget } from '#spreadsheet/bindings';
 
 type ToBudgetMenuProps = Omit<
@@ -30,13 +31,18 @@ export function ToBudgetMenu({
 }: ToBudgetMenuProps) {
   const { t } = useTranslation();
 
-  const toBudget = useEnvelopeSheetValue(envelopeBudget.toBudget) ?? 0;
+  // Whether "move to a category" / "cover from a category" make sense is
+  // now driven by the real Unallocated envelope balance (CLAUDE.md "How
+  // money moves" #3/#4), not the old to-budget formula cell -- see
+  // `#budget/mutations`, which stopped writing to that cell for the
+  // quick-fund action this menu's items ultimately trigger.
+  const { balance: unallocatedBalance } = useUnallocatedEnvelope();
   const forNextMonth = useEnvelopeSheetValue(envelopeBudget.forNextMonth) ?? 0;
   const manualBuffered =
     useEnvelopeSheetValue(envelopeBudget.manualBuffered) ?? 0;
   const autoBuffered = useEnvelopeSheetValue(envelopeBudget.autoBuffered) ?? 0;
   const items = [
-    ...(toBudget > 0
+    ...(unallocatedBalance > 0
       ? [
           {
             name: 'transfer',
@@ -44,7 +50,7 @@ export function ToBudgetMenu({
           },
         ]
       : []),
-    ...(autoBuffered === 0 && toBudget > 0
+    ...(autoBuffered === 0 && unallocatedBalance > 0
       ? [
           {
             name: 'buffer',
@@ -52,7 +58,7 @@ export function ToBudgetMenu({
           },
         ]
       : []),
-    ...(toBudget < 0
+    ...(unallocatedBalance < 0
       ? [
           {
             name: 'cover',

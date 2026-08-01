@@ -1,4 +1,4 @@
-import React, { memo, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { ComponentProps, CSSProperties } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
@@ -18,6 +18,7 @@ import { css } from '@emotion/css';
 import { BalanceWithCarryover } from '#components/budget/BalanceWithCarryover';
 import {
   makeAmountGrey,
+  shouldFireQuickFundTransfer,
   sumEnvelopeBalances,
   sumTotalEnvelopeBalance,
 } from '#components/budget/util';
@@ -406,6 +407,47 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
   const { hasGoal, pct } = useGoalBarData(category.id);
   const isPartiallyFunded = hasGoal && pct > 0 && pct < 1;
 
+  // The "budget" cell below is a quick-fund action (CLAUDE.md "The budget
+  // table's allocation cell"), not a target-setting field -- but it still
+  // displays `catBudgeted` (the old `budget-{cat}` spreadsheet cell) when
+  // not being edited, since that binding also legitimately reflects a
+  // handful of not-yet-migrated menu actions (copy last month, N-month
+  // average, goal templates -- see `useBudgetActions` in
+  // `#budget/mutations`) that still write through the old formula engine.
+  // Once a direct-typed quick-fund transfer succeeds, `catBudgeted` itself
+  // is untouched, so we blank this cell's own display locally until that
+  // binding legitimately changes again from one of those other actions.
+  const [quickFundJustApplied, setQuickFundJustApplied] = useState(false);
+  const budgetedForQuickFundDisplay = useSheetValue<
+    'envelope-budget',
+    'budget'
+  >(envelopeBudget.catBudgeted(category.id));
+  const prevBudgetedForQuickFundDisplayRef = useRef(
+    budgetedForQuickFundDisplay,
+  );
+  useEffect(() => {
+    if (
+      budgetedForQuickFundDisplay !== prevBudgetedForQuickFundDisplayRef.current
+    ) {
+      prevBudgetedForQuickFundDisplayRef.current = budgetedForQuickFundDisplay;
+      setQuickFundJustApplied(false);
+    }
+  }, [budgetedForQuickFundDisplay]);
+
+  // Tracks whether THIS cell (this category + month) is still the one
+  // actively being edited, read fresh at the moment the quick-fund
+  // transfer's async `onSave` `onSuccess` callback actually resolves --
+  // mirrors the `exposed`-gated guard the previous auto-close mechanism
+  // used (`SheetCell`'s "close if exposed" callback in `#components/table`,
+  // which re-checks `props.exposed` fresh rather than trusting a captured
+  // closure value). `editing` is an ordinary render-time prop here, so the
+  // `onSave` closure below would otherwise only ever see whatever it was
+  // when the transfer *started* -- and Enter/Tab batch-editing (CLAUDE.md
+  // Section 10) can move `editing` to a completely different row
+  // synchronously, well before this row's async IPC round-trip resolves.
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+
   const balancePillBg =
     rawBalance < 0
       ? 'rgba(180,35,24,0.14)'
@@ -570,6 +612,15 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
             borderBottomWidth: 0,
           }}
           textAlign="right"
+          // Blank the unexposed display right after a direct-typed
+          // quick-fund transfer succeeds -- see the `quickFundJustApplied`
+          // comment above. Only affects this cell's own rendering; the
+          // underlying `catBudgeted` binding (and everything else reading
+          // it, e.g. goal progress, carryover, the not-yet-migrated
+          // budget-menu actions) is left completely untouched.
+          formatter={value =>
+            quickFundJustApplied ? '' : format(value, 'financial')
+          }
           valueStyle={{
             cursor: 'default',
             margin: 1,
@@ -596,10 +647,50 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
             },
           }}
           onSave={(parsedIntegerAmount: number | null) => {
-            onBudgetAction(month, 'budget-amount', {
-              category: category.id,
-              amount: parsedIntegerAmount ?? 0,
-            });
+            // Guards against both re-firing a real transfer on a no-op
+            // save (e.g. plain Enter/Tab batch-editing down the column)
+            // and against a zero/negative amount, which the mutation
+            // itself never turns into a real transfer -- see
+            // `shouldFireQuickFundTransfer`'s own doc comment for why
+            // both cases matter here specifically.
+            if (
+              !shouldFireQuickFundTransfer(
+                parsedIntegerAmount,
+                budgetedForQuickFundDisplay,
+              )
+            ) {
+              onEdit(null);
+              return;
+            }
+
+            // Quick-fund transfer (CLAUDE.md "The budget table's
+            // allocation cell") -- a one-off action, not a persisted
+            // target, so only reset this cell's own display once the
+            // transfer has genuinely landed. Leave it showing the typed
+            // amount (don't reset) if the transfer errors, so the user
+            // can retry/correct it.
+            onBudgetAction(
+              month,
+              'budget-amount',
+              {
+                category: category.id,
+                amount: parsedIntegerAmount ?? 0,
+              },
+              {
+                onSuccess: () => {
+                  // Only close/blank THIS cell if it's still the one
+                  // actively being edited when the transfer resolves --
+                  // see the `editingRef` comment above. Otherwise this
+                  // would clobber the shared, non-row-scoped `editing`
+                  // state out from under whatever cell the user has since
+                  // tabbed/entered into.
+                  if (editingRef.current) {
+                    setQuickFundJustApplied(true);
+                    onEdit(null);
+                  }
+                },
+              },
+            );
           }}
         />
       </View>

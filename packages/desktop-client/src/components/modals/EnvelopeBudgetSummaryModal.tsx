@@ -11,17 +11,16 @@ import type { CategoryEntity } from '@actual-app/core/types/models/category';
 
 import { ToBudgetAmount } from '#components/budget/envelope/budgetsummary/ToBudgetAmount';
 import { TotalsList } from '#components/budget/envelope/budgetsummary/TotalsList';
-import { useEnvelopeSheetValue } from '#components/budget/envelope/EnvelopeBudgetComponents';
 import { Modal, ModalCloseButton, ModalHeader } from '#components/common/Modal';
 import { useCategoriesById } from '#hooks/useCategories';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
 import { SheetNameProvider } from '#hooks/useSheetName';
+import { useUnallocatedEnvelope } from '#hooks/useUnallocatedEnvelope';
 import { useUndo } from '#hooks/useUndo';
 import { collapseModals, pushModal } from '#modals/modalsSlice';
 import type { Modal as ModalType } from '#modals/modalsSlice';
 import { useDispatch } from '#redux';
-import { envelopeBudget } from '#spreadsheet/bindings';
 
 type EnvelopeBudgetSummaryModalProps = Extract<
   ModalType,
@@ -38,11 +37,11 @@ export function EnvelopeBudgetSummaryModal({
   const locale = useLocale();
   const dispatch = useDispatch();
   const prevMonthName = formatMonth(prevMonth(month), 'MMM', locale);
-  const sheetValue =
-    useEnvelopeSheetValue({
-      name: envelopeBudget.toBudget,
-      value: 0,
-    }) ?? 0;
+  // The transfer/cover modals below prefill/cap against the real
+  // Unallocated envelope balance (CLAUDE.md "How money moves" #3/#4), not
+  // the old to-budget formula cell used for the summary display above --
+  // see `#budget/mutations`.
+  const { balance: unallocatedBalance } = useUnallocatedEnvelope();
 
   const { showUndoNotification } = useUndo();
   const {
@@ -59,7 +58,7 @@ export function EnvelopeBudgetSummaryModal({
           options: {
             title: t('Transfer to category'),
             month,
-            amount: sheetValue,
+            amount: Math.max(unallocatedBalance, 0),
             onSubmit: (amount, toCategoryId) => {
               void onBudgetAction(month, 'transfer-available', {
                 amount,
@@ -89,7 +88,7 @@ export function EnvelopeBudgetSummaryModal({
             title: t('Cover overbudgeted'),
             month,
             showToBeBudgeted: false,
-            amount: sheetValue,
+            amount: Math.max(-unallocatedBalance, 0),
             onSubmit: (amount, categoryId) => {
               void onBudgetAction(month, 'cover-overbudgeted', {
                 category: categoryId,

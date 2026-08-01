@@ -98,6 +98,38 @@ export function separateGroups(categoryGroups: CategoryGroupEntity[]) {
   ] as const;
 }
 
+/**
+ * Decides whether the budget grid's quick-fund cell (CLAUDE.md "The budget
+ * table's allocation cell") should actually fire a real
+ * envelope-to-envelope transfer for a given save event, given the
+ * just-typed amount and this cell's current bound (`catBudgeted`) value.
+ *
+ * Two cases must NOT fire a transfer, both guarding against the standard
+ * Enter-key batch-editing flow (CLAUDE.md Section 10): `InputValue`'s
+ * Enter/Tab handling (`#components/table`) calls `onUpdate`/triggers save
+ * unconditionally on every Enter/Tab press, even when the value shown was
+ * never actually changed by the user (e.g. `moveVertically` in
+ * `BudgetTable.tsx` pre-fills the next row's cell with its own current
+ * bound value) -- without this guard, an ordinary tab/enter tour down an
+ * already-funded column would silently re-fund every category from
+ * Unallocated again, once per keypress.
+ *
+ *  1. The typed amount is unchanged from what's currently bound to this
+ *     cell -- there's nothing to transfer.
+ *  2. The typed amount is zero or negative -- `useBudgetActions()`'s
+ *     `'budget-amount'` case is a guaranteed no-op for these (see
+ *     `#budget/mutations`), never performing a transfer or writing to
+ *     `catBudgeted`, so there's nothing to quick-fund.
+ */
+export function shouldFireQuickFundTransfer(
+  parsedIntegerAmount: number | null,
+  currentBudgeted: number | null | undefined,
+): boolean {
+  const newAmount = parsedIntegerAmount ?? 0;
+  const currentAmount = currentBudgeted ?? 0;
+  return newAmount !== currentAmount && newAmount > 0;
+}
+
 export function makeAmountGrey(value: number | string | null): CSSProperties {
   return value === 0 || value === '0' || value === '' || value == null
     ? { color: theme.budgetNumberZero }

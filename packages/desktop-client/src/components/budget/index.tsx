@@ -176,8 +176,13 @@ export function Budget() {
   const reorderCategoryGroup = useReorderCategoryGroupMutation();
   const applyBudgetAction = useBudgetActions();
 
-  const onBudgetAction = (month, type, args) => {
-    applyBudgetAction.mutate({ month, type, args });
+  const onBudgetAction = (
+    month,
+    type,
+    args,
+    callbacks?: BudgetActionCallbacks,
+  ) => {
+    applyBudgetAction.mutate({ month, type, args }, callbacks);
   };
 
   if (!initialized || !categoryGroups) {
@@ -278,13 +283,30 @@ export type BudgetSummaryProps = {
   month: string;
 };
 
+/**
+ * Optional per-call success/error hooks for `onBudgetAction`, e.g. so the
+ * budget grid's quick-fund cell (CLAUDE.md "The budget table's allocation
+ * cell") can reset its own display only once its one-off transfer has
+ * genuinely landed, without affecting the shared mutation's own
+ * notification handling.
+ */
+export type BudgetActionCallbacks = {
+  onSuccess?: () => void;
+  onError?: () => void;
+};
+
 export type CategoryMonthProps = {
   month: string;
   category: CategoryEntity;
   editing: boolean;
   isLast?: boolean;
   onEdit: (id: CategoryEntity['id'] | null, month?: string) => void;
-  onBudgetAction: (month: string, action: string, arg: unknown) => void;
+  onBudgetAction: (
+    month: string,
+    action: string,
+    arg: unknown,
+    callbacks?: BudgetActionCallbacks,
+  ) => void;
   onShowActivity: (id: CategoryEntity['id'], month: string) => void;
 };
 

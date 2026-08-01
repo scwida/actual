@@ -1,22 +1,134 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { send } from '@actual-app/core/platform/client/connection';
+import * as monthUtils from '@actual-app/core/shared/months';
+import { groupById } from '@actual-app/core/shared/util';
 import type { IntegerAmount } from '@actual-app/core/shared/util';
 import type {
   CategoryEntity,
   CategoryGroupEntity,
+  NegativeBalanceWarning,
+  TransferMovementRequest,
 } from '@actual-app/core/types/models';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import { v4 as uuidv4 } from 'uuid';
 
+import type { UseFormatResult } from '#hooks/useFormat';
+import { useFormat } from '#hooks/useFormat';
+import { useUnallocatedEnvelopeId } from '#hooks/useUnallocatedEnvelope';
 import { pushModal } from '#modals/modalsSlice';
 import { addNotification } from '#notifications/notificationsSlice';
 import { useDispatch } from '#redux';
 import type { AppDispatch } from '#redux/store';
 
+import {
+  applyEnvelopeMovement,
+  previewEnvelopeMovement,
+} from './envelopeMovements';
 import { categoryQueries } from './queries';
+
+// Note: deliberately importing `categoryQueries` from the sibling
+// `./queries` module (not `useCategoriesById` from `#hooks/useCategories`)
+// -- that hook imports `categoryQueries` from the `#budget` barrel, which
+// re-exports this very file, and would form an import cycle.
+
+/**
+ * The reserved "Unallocated" envelope's well-known pseudo-id used
+ * throughout the old budget-summary UI (`addToBeBudgetedGroup` in
+ * `#components/budget/util`) to represent "the overall pool of unassigned
+ * money" as a selectable category-picker option. Under the real-balance
+ * engine that pool IS a real envelope (Unallocated, see
+ * `#hooks/useUnallocatedEnvelope`), so any occurrence of this sentinel
+ * coming back from a picker is translated to the real envelope id before
+ * building a movement request.
+ */
+const TO_BUDGET_PSEUDO_CATEGORY_ID = 'to-budget';
+
+/**
+ * Applies a real envelope-to-envelope transfer (CLAUDE.md "How money
+ * moves" #3) for one of the budget table's quick-fund/transfer/cover
+ * actions, and surfaces a gentle, dismissible nudge -- never a block --
+ * for any envelope the transfer would leave negative (CLAUDE.md "Envelope
+ * rules"). Previews first so the nudge can be built before the movement
+ * lands, then always applies regardless of what the preview found.
+ */
+async function applyEnvelopeTransfer({
+  request,
+  dispatch,
+  t,
+  format,
+  categoriesById,
+  unallocatedId,
+}: {
+  request: TransferMovementRequest;
+  dispatch: AppDispatch;
+  t: TFunction;
+  format: UseFormatResult;
+  categoriesById: Record<string, CategoryEntity>;
+  unallocatedId: CategoryEntity['id'] | null;
+}): Promise<void> {
+  const envelopeName = (id: CategoryEntity['id']): string =>
+    id === unallocatedId ? t('Unallocated') : (categoriesById[id]?.name ?? id);
+
+  const { warnings } = await previewEnvelopeMovement(request);
+  // Never block on a negative-balance warning -- only ever a dismissible
+  // nudge (CLAUDE.md "Envelope rules"). Apply unconditionally.
+  await applyEnvelopeMovement(request);
+
+  for (const warning of warnings) {
+    dispatch(
+      addNotification({
+        notification: {
+          type: 'warning',
+          message: buildNegativeBalanceNudgeMessage({
+            warning,
+            t,
+            format,
+            envelopeName,
+          }),
+        },
+      }),
+    );
+  }
+}
+
+function buildNegativeBalanceNudgeMessage({
+  warning,
+  t,
+  format,
+  envelopeName,
+}: {
+  warning: NegativeBalanceWarning;
+  t: TFunction;
+  format: UseFormatResult;
+  envelopeName: (id: CategoryEntity['id']) => string;
+}): string {
+  const suggestion = warning.suggestedCover;
+  const negativeAmount = format(
+    Math.abs(warning.resultingBalance),
+    'financial',
+  );
+
+  if (suggestion && 'envelope' in suggestion.source) {
+    return t(
+      '{{envelope}} is now {{amount}} negative. Consider covering it from {{source}} ({{coverAmount}}).',
+      {
+        envelope: envelopeName(warning.envelope),
+        amount: negativeAmount,
+        source: envelopeName(suggestion.source.envelope),
+        coverAmount: format(suggestion.amount, 'financial'),
+      },
+    );
+  }
+
+  return t('{{envelope}} is now {{amount}} negative.', {
+    envelope: envelopeName(warning.envelope),
+    amount: negativeAmount,
+  });
+}
 
 function invalidateQueries(queryClient: QueryClient, queryKey?: QueryKey) {
   void queryClient.invalidateQueries({
@@ -660,17 +772,55 @@ type ApplyBudgetActionPayload =
 export function useBudgetActions() {
   const dispatch = useDispatch();
   const { t } = useTranslation();
+  const format = useFormat();
+  const { id: unallocatedId } = useUnallocatedEnvelopeId();
+  const { data: { list: categories } = { list: [] as CategoryEntity[] } } =
+    useQuery(categoryQueries.list());
+  const categoriesById = useMemo(() => groupById(categories), [categories]);
+
+  const requireUnallocatedId = (): CategoryEntity['id'] | null => {
+    if (!unallocatedId) {
+      dispatchErrorNotification(
+        dispatch,
+        t('Could not find the Unallocated envelope. Please try again.'),
+      );
+    }
+    return unallocatedId;
+  };
 
   return useMutation({
     mutationFn: async ({ month, type, args }: ApplyBudgetActionPayload) => {
       switch (type) {
-        case 'budget-amount':
-          await send('budget/budget-amount', {
-            month,
-            category: args.category,
-            amount: args.amount,
+        case 'budget-amount': {
+          // The quick-fund cell (CLAUDE.md "The budget table's allocation
+          // cell") is a one-shot transfer from Unallocated into this
+          // envelope, not a persistent monthly target -- unlike the old
+          // `budget/budget-amount` handler, there's no stored target left
+          // to reset for a zero/blank amount, so there's simply nothing
+          // to move.
+          if (args.amount <= 0) {
+            return null;
+          }
+          const from = requireUnallocatedId();
+          if (!from) {
+            return null;
+          }
+          await applyEnvelopeTransfer({
+            request: {
+              type: 'transfer',
+              from,
+              to: args.category,
+              amount: args.amount,
+              date: monthUtils.currentDay(),
+            },
+            dispatch,
+            t,
+            format,
+            categoriesById,
+            unallocatedId,
           });
           return null;
+        }
         case 'copy-last':
           await send('budget/copy-previous-month', { month });
           return null;
@@ -708,31 +858,101 @@ export function useBudgetActions() {
         case 'reset-hold':
           await send('budget/reset-hold', { month });
           return null;
-        case 'cover-overspending':
-          await send('budget/cover-overspending', {
-            month,
-            to: args.to,
-            from: args.from,
-            amount: args.amount,
-            currencyCode: args.currencyCode,
+        case 'cover-overspending': {
+          // Fixes a negative envelope by transferring in from another
+          // envelope (CLAUDE.md "Envelope rules" cover-suggestion policy).
+          // `from` may still be the old UI's "To Budget" pseudo-category
+          // (see `addToBeBudgetedGroup` in `#components/budget/util`) --
+          // translate it to the real Unallocated envelope it now stands
+          // for.
+          if (!args.amount || args.amount <= 0) {
+            return null;
+          }
+          const unallocated = requireUnallocatedId();
+          if (!unallocated) {
+            return null;
+          }
+          const from =
+            args.from === TO_BUDGET_PSEUDO_CATEGORY_ID
+              ? unallocated
+              : args.from;
+          await applyEnvelopeTransfer({
+            request: {
+              type: 'transfer',
+              from,
+              to: args.to,
+              amount: args.amount,
+              date: monthUtils.currentDay(),
+            },
+            dispatch,
+            t,
+            format,
+            categoriesById,
+            unallocatedId,
           });
           return null;
-        case 'transfer-available':
-          await send('budget/transfer-available', {
-            month,
-            amount: args.amount,
-            category: args.category,
+        }
+        case 'transfer-available': {
+          // "Transfer available funds" in the old to-be-budgeted model is
+          // now just a transfer out of the real Unallocated envelope
+          // (CLAUDE.md "How money moves" #3).
+          if (args.amount <= 0) {
+            return null;
+          }
+          const from = requireUnallocatedId();
+          if (!from) {
+            return null;
+          }
+          await applyEnvelopeTransfer({
+            request: {
+              type: 'transfer',
+              from,
+              to: args.category,
+              amount: args.amount,
+              date: monthUtils.currentDay(),
+            },
+            dispatch,
+            t,
+            format,
+            categoriesById,
+            unallocatedId,
           });
           return null;
-        case 'cover-overbudgeted':
-          await send('budget/cover-overbudgeted', {
-            month,
-            category: args.category,
-            amount: args.amount,
-            currencyCode: args.currencyCode,
+        }
+        case 'cover-overbudgeted': {
+          // Fixes a negative Unallocated balance (the new model's
+          // equivalent of the old "overbudgeted to-budget pool") by
+          // transferring in from the chosen category.
+          if (!args.amount || args.amount <= 0) {
+            return null;
+          }
+          const to = requireUnallocatedId();
+          if (!to) {
+            return null;
+          }
+          await applyEnvelopeTransfer({
+            request: {
+              type: 'transfer',
+              from: args.category,
+              to,
+              amount: args.amount,
+              date: monthUtils.currentDay(),
+            },
+            dispatch,
+            t,
+            format,
+            categoriesById,
+            unallocatedId,
           });
           return null;
+        }
         case 'transfer-category':
+          // NOT migrated to the envelope engine -- out of scope for this
+          // change (a plain envelope-to-envelope transfer between two
+          // user-chosen categories, not involving Unallocated). Still
+          // writes through the old formula engine's `zero_budgets` table
+          // via `actions.transferCategory`. Flagged for a follow-up, not
+          // fixed here.
           await send('budget/transfer-category', {
             month,
             amount: args.amount,

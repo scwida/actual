@@ -5,12 +5,12 @@ import { Popover } from '@actual-app/components/popover';
 import { View } from '@actual-app/components/view';
 
 import { CoverMenu } from '#components/budget/envelope/CoverMenu';
-import { useEnvelopeSheetValue } from '#components/budget/envelope/EnvelopeBudgetComponents';
+import { CoverSuggestion } from '#components/budget/envelope/CoverSuggestion';
 import { HoldMenu } from '#components/budget/envelope/HoldMenu';
 import { TransferMenu } from '#components/budget/envelope/TransferMenu';
 import { useContextMenu } from '#hooks/useContextMenu';
 import { useFormat } from '#hooks/useFormat';
-import { envelopeBudget } from '#spreadsheet/bindings';
+import { useUnallocatedEnvelope } from '#hooks/useUnallocatedEnvelope';
 
 import { ToBudgetAmount } from './ToBudgetAmount';
 import { ToBudgetMenu } from './ToBudgetMenu';
@@ -45,15 +45,12 @@ export function ToBudget({
     },
     [ref, _setMenuStep],
   );
-  const availableValue = useEnvelopeSheetValue({
-    name: envelopeBudget.toBudget,
-    value: 0,
-  });
-  if (typeof availableValue !== 'number' && availableValue !== null) {
-    throw new Error(
-      'Expected availableValue to be a number but got ' + availableValue,
-    );
-  }
+  // The amount these menus prefill/cap at is the real Unallocated envelope
+  // balance (CLAUDE.md "How money moves" #3/#4) -- not the old to-budget
+  // formula cell, which no longer reflects real money once the quick-fund
+  // cell stops writing to it (see `#budget/mutations`).
+  const { id: unallocatedId, balance: unallocatedBalance } =
+    useUnallocatedEnvelope();
 
   const {
     setMenuOpen,
@@ -117,7 +114,7 @@ export function ToBudget({
           )}
           {menuStep === 'transfer' && (
             <TransferMenu
-              initialAmount={availableValue}
+              initialAmount={Math.max(unallocatedBalance, 0)}
               onClose={() => setMenuOpen(false)}
               onSubmit={(amount, categoryId) => {
                 onBudgetAction(month, 'transfer-available', {
@@ -128,18 +125,33 @@ export function ToBudget({
             />
           )}
           {menuStep === 'cover' && (
-            <CoverMenu
-              showToBeBudgeted={false}
-              initialAmount={availableValue}
-              onClose={() => setMenuOpen(false)}
-              onSubmit={(amount, categoryId) => {
-                onBudgetAction(month, 'cover-overbudgeted', {
-                  category: categoryId,
-                  amount,
-                  currencyCode: format.currency.code,
-                });
-              }}
-            />
+            <>
+              {unallocatedId && (
+                <CoverSuggestion
+                  envelopeId={unallocatedId}
+                  onApply={(source, amount) => {
+                    onBudgetAction(month, 'cover-overbudgeted', {
+                      category: source,
+                      amount,
+                      currencyCode: format.currency.code,
+                    });
+                    setMenuOpen(false);
+                  }}
+                />
+              )}
+              <CoverMenu
+                showToBeBudgeted={false}
+                initialAmount={Math.max(-unallocatedBalance, 0)}
+                onClose={() => setMenuOpen(false)}
+                onSubmit={(amount, categoryId) => {
+                  onBudgetAction(month, 'cover-overbudgeted', {
+                    category: categoryId,
+                    amount,
+                    currencyCode: format.currency.code,
+                  });
+                }}
+              />
+            </>
           )}
         </span>
       </Popover>
